@@ -30,7 +30,11 @@ export const getThemeByDataType = (assessmentData) => {
       secondary: { main: secondaryColor },
       background: {
         default: '#0f0f23',
-        paper: 'rgba(30, 30, 46, 0.8)',
+        paper: 'rgba(30, 30, 46, 0.9)',
+      },
+      text: {
+        primary: '#ffffff',
+        secondary: '#b3b3b3'
       }
     },
     typography: {
@@ -49,10 +53,11 @@ export const getThemeByDataType = (assessmentData) => {
       MuiPaper: {
         styleOverrides: {
           root: {
-            background: 'rgba(30, 30, 46, 0.8)',
+            background: 'rgba(30, 30, 46, 0.95)',
             backdropFilter: 'blur(20px)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
             borderRadius: '16px',
+            color: '#ffffff',
             transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
             '&:hover': {
               transform: 'translateY(-2px)',
@@ -64,9 +69,11 @@ export const getThemeByDataType = (assessmentData) => {
       MuiCard: {
         styleOverrides: {
           root: {
-            background: 'rgba(30, 30, 46, 0.6)',
+            background: 'rgba(30, 30, 46, 0.9)',
             backdropFilter: 'blur(15px)',
             borderRadius: '20px',
+            color: '#ffffff',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
             transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
             '&:hover': {
               transform: 'translateY(-4px) scale(1.02)',
@@ -80,10 +87,45 @@ export const getThemeByDataType = (assessmentData) => {
             borderRadius: '12px',
             textTransform: 'none',
             fontWeight: 600,
-            background: backgroundGradient,
+            color: '#ffffff',
             transition: 'all 0.3s ease',
             '&:hover': {
               transform: 'translateY(-2px)',
+            }
+          },
+          contained: {
+            background: backgroundGradient,
+            color: '#ffffff'
+          },
+          outlined: {
+            borderColor: 'rgba(255, 255, 255, 0.3)',
+            color: '#ffffff',
+            '&:hover': {
+              borderColor: 'rgba(255, 255, 255, 0.5)',
+              backgroundColor: 'rgba(255, 255, 255, 0.1)'
+            }
+          }
+        }
+      },
+      MuiTableCell: {
+        styleOverrides: {
+          root: {
+            color: '#ffffff',
+            borderColor: 'rgba(255, 255, 255, 0.1)'
+          },
+          head: {
+            backgroundColor: 'rgba(255, 255, 255, 0.05)',
+            color: '#ffffff',
+            fontWeight: 600
+          }
+        }
+      },
+      MuiCheckbox: {
+        styleOverrides: {
+          root: {
+            color: 'rgba(255, 255, 255, 0.7)',
+            '&.Mui-checked': {
+              color: primaryColor
             }
           }
         }

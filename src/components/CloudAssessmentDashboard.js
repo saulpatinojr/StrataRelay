@@ -1,7 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { Grid, Paper, Typography, Box, Card, CardContent, Chip, Alert } from '@mui/material';
 import { Computer, Memory, Storage, Cloud, TrendingUp, Warning } from '@mui/icons-material';
-import { Bar, Doughnut, Line } from 'react-chartjs-2';
+import { Bar, Doughnut } from 'react-chartjs-2';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  ArcElement,
+  Title,
+  Tooltip,
+  Legend,
+} from 'chart.js';
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  ArcElement,
+  Title,
+  Tooltip,
+  Legend
+);
 
 const CloudAssessmentDashboard = ({ assessmentData, aiInsights }) => {
   if (!assessmentData) return null;
@@ -21,7 +41,11 @@ const CloudAssessmentDashboard = ({ assessmentData, aiInsights }) => {
     labels: ['Windows', 'Linux', 'Other'],
     datasets: [{
       label: 'VM Count',
-      data: [licensing.windowsVMs, licensing.linuxVMs, assessmentData.totalVMs - licensing.windowsVMs - licensing.linuxVMs],
+      data: [
+        licensing?.windowsVMs || 0, 
+        licensing?.linuxVMs || 0, 
+        Math.max(0, (assessmentData?.totalVMs || 0) - (licensing?.windowsVMs || 0) - (licensing?.linuxVMs || 0))
+      ],
       backgroundColor: ['#2196f3', '#4caf50', '#9e9e9e'],
       borderWidth: 1
     }]

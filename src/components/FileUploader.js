@@ -1,15 +1,14 @@
 import React, { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { Box, Typography, Paper, Alert } from '@mui/material';
+import { Box, Typography, Paper, Alert, CircularProgress } from '@mui/material';
 import { CloudUpload } from '@mui/icons-material';
-import { ref, uploadBytes } from 'firebase/storage';
-import { collection, addDoc } from 'firebase/firestore';
-import { storage, db } from '../firebase';
+// Firebase imports removed for local processing
 import { parseRVToolsData, parseAzMigrateData, analyzeCloudReadiness, parseExcelFile } from '../services/dataParser';
 import { validateFileName } from '../utils/fileValidator';
 
 const FileUploader = ({ onUpload, onDataParsed }) => {
   const [fileError, setFileError] = useState(null);
+  const [processing, setProcessing] = useState(false);
 
   const onDrop = useCallback(async (acceptedFiles) => {
     const file = acceptedFiles[0];
@@ -23,6 +22,7 @@ const FileUploader = ({ onUpload, onDataParsed }) => {
     }
     
     setFileError(null);
+    setProcessing(true);
 
     try {
       // Parse Excel file locally first
@@ -38,25 +38,18 @@ const FileUploader = ({ onUpload, onDataParsed }) => {
       
       const assessment = analyzeCloudReadiness(parsedData);
       
-      // Upload to Firebase
-      const storageRef = ref(storage, `uploads/${Date.now()}_${file.name}`);
-      await uploadBytes(storageRef, file);
+      // Skip Firebase upload for now - process locally
+      const jobId = `local_${Date.now()}`;
       
-      const jobDoc = await addDoc(collection(db, 'jobs'), {
-        fileName: file.name,
-        status: 'processed',
-        createdAt: new Date(),
-        filePath: storageRef.fullPath,
-        assessmentData: assessment,
-        parsedData: parsedData
-      });
-
-      onUpload(jobDoc.id);
+      onUpload(jobId);
       if (onDataParsed) {
         onDataParsed(assessment, parsedData);
       }
     } catch (error) {
       console.error('Upload failed:', error);
+      setFileError(`Processing failed: ${error.message}`);
+    } finally {
+      setProcessing(false);
     }
   }, [onUpload, onDataParsed]);
 
@@ -87,9 +80,13 @@ const FileUploader = ({ onUpload, onDataParsed }) => {
         }}
       >
         <input {...getInputProps()} />
-        <CloudUpload sx={{ fontSize: 48, color: 'primary.main', mb: 2 }} />
+        {processing ? (
+          <CircularProgress sx={{ mb: 2 }} />
+        ) : (
+          <CloudUpload sx={{ fontSize: 48, color: 'primary.main', mb: 2 }} />
+        )}
         <Typography variant="h6">
-          {isDragActive ? 'Drop files here' : 'Drag & drop data files'}
+          {processing ? 'Processing file...' : isDragActive ? 'Drop files here' : 'Drag & drop data files'}
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
           Supported: RVTools export and Az Migrate Report

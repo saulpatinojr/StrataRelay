@@ -2,7 +2,7 @@ import React from 'react';
 import { Paper, Typography, Box, Chip, Grid } from '@mui/material';
 import { DataObject, TableChart } from '@mui/icons-material';
 
-const DataSummary = ({ parsedData, fileType }) => {
+const DataSummary = ({ parsedData, fileType, onDrillDown }) => {
   if (!parsedData) return null;
 
   const sheets = Object.keys(parsedData);
@@ -43,6 +43,9 @@ const DataSummary = ({ parsedData, fileType }) => {
               label={`${sheet} (${parsedData[sheet].length})`}
               size="small"
               variant="outlined"
+              clickable
+              onClick={() => onDrillDown && onDrillDown(sheet, parsedData[sheet])}
+              sx={{ cursor: 'pointer' }}
             />
           ))}
         </Box>

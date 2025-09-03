@@ -38,7 +38,7 @@ export const parseAzMigrateData = (workbook) => {
   return parsedData;
 };
 
-export const analyzeCloudReadiness = (rvData, azData = null) => {
+export const analyzeCloudReadiness = (data, azData = null) => {
   const analysis = {
     totalVMs: 0,
     compute: { totalCPU: 0, totalMemoryGB: 0, avgCPUUtil: 0 },
@@ -51,6 +51,22 @@ export const analyzeCloudReadiness = (rvData, azData = null) => {
   };
 
   // Analyze RVTools vInfo data
+  if (data.vInfo) {
+    analyzeRVToolsData(data, analysis);
+  }
+  
+  // Analyze Azure Migrate data
+  if (azData || (!data.vInfo && Object.keys(data).length > 0)) {
+    analyzeAzMigrateData(azData || data, analysis);
+  }
+
+  // Generate recommendations
+  analysis.recommendations = generateRecommendations(analysis);
+  
+  return analysis;
+};
+
+const analyzeRVToolsData = (rvData, analysis) => {
   if (rvData.vInfo) {
     analysis.totalVMs = rvData.vInfo.length;
     
@@ -88,11 +104,42 @@ export const analyzeCloudReadiness = (rvData, azData = null) => {
       analysis.storage.totalStorageGB += (disk['Capacity MB'] || 0) / 1024;
     });
   }
+};
 
-  // Generate recommendations
-  analysis.recommendations = generateRecommendations(analysis);
+const analyzeAzMigrateData = (azData, analysis) => {
+  const serversSheet = Object.keys(azData).find(key => 
+    key.toLowerCase().includes('server') || 
+    key.toLowerCase().includes('machine') ||
+    key.toLowerCase().includes('assessment')
+  );
   
-  return analysis;
+  if (serversSheet && azData[serversSheet]) {
+    const servers = azData[serversSheet];
+    analysis.totalVMs = servers.length;
+    
+    servers.forEach(server => {
+      const cpu = server['Cores'] || server['CPU cores'] || server['vCPUs'] || 0;
+      const memory = server['Memory in MB'] || server['RAM (MB)'] || server['Memory'] || 0;
+      const os = server['Operating system'] || server['OS'] || '';
+      
+      analysis.compute.totalCPU += cpu;
+      analysis.compute.totalMemoryGB += memory / 1024;
+      
+      if (os.toLowerCase().includes('windows')) {
+        analysis.licensing.windowsVMs++;
+      } else if (os.toLowerCase().includes('linux')) {
+        analysis.licensing.linuxVMs++;
+      }
+      
+      if (cpu <= 8 && memory <= 32768) {
+        analysis.cloudReadiness.ready++;
+      } else if (cpu > 8 || memory > 32768) {
+        analysis.cloudReadiness.complex++;
+      } else {
+        analysis.cloudReadiness.needsWork++;
+      }
+    });
+  }
 };
 
 const generateRecommendations = (analysis) => {
