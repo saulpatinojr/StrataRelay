@@ -4,61 +4,41 @@ import { CssBaseline, AppBar, Toolbar, Typography } from '@mui/material';
 import LandingPage from './components/LandingPage';
 import AssessmentPage from './components/AssessmentPage';
 import FloatingAI from './components/FloatingAI';
-import { analyzeCloudReadiness } from './services/geminiService';
-import { createDataAnchors, filterDataByActiveSheets } from './services/dataAnchor';
+import { getAssessment } from './services/assessmentService';
 import { getThemeByDataType } from './theme/dynamicTheme';
 
-
-
 function App() {
-  const [currentJobId, setCurrentJobId] = useState(null);
   const [assessmentData, setAssessmentData] = useState(null);
-  const [aiInsights, setAiInsights] = useState(null);
   const [parsedData, setParsedData] = useState(null);
   const [currentPage, setCurrentPage] = useState('landing');
   const [dataSources, setDataSources] = useState([]);
   const [activeSheets, setActiveSheets] = useState([]);
 
-  const handleUpload = (jobId, sheetCode = '01', fileName = '') => {
-    setCurrentJobId(jobId);
-  };
-
-  const handleDataParsed = async (assessment, universalData, sheetCode = '01', fileName = '') => {
-    // Use VM count from universal data structure
-    const vmCount = universalData.vmCount || 0;
-    
-    // Add to data sources
-    const displayName = fileName ? fileName.replace(/\.[^/.]+$/, '') : `Data Sheet ${sheetCode}`;
-    const newSource = {
-      code: sheetCode,
-      name: displayName,
-      data: universalData,
-      vmCount: vmCount
-    };
-    
-    const updatedSources = [...dataSources, newSource];
-    setDataSources(updatedSources);
-    setActiveSheets([...activeSheets, sheetCode]);
-    
-    // Create combined assessment from all sources
-    const anchors = createDataAnchors(updatedSources);
-    const combinedAssessment = {
-      ...assessment,
-      totalVMs: anchors.size, // Total unique VMs across all sources
-      dataSources: updatedSources.length,
-      activeSheets: [...activeSheets, sheetCode]
-    };
-    
-    setAssessmentData(combinedAssessment);
-    setParsedData(universalData);
-    setCurrentPage('assessment');
-    
-    // Get AI insights
+  const handleDataParsed = async (universalData, fileName = '') => {
     try {
-      const insights = await analyzeCloudReadiness(universalData.vms || [], null);
-      setAiInsights(insights);
+      // 1. Get the full assessment from the new backend endpoint
+      const backendAssessment = await getAssessment(universalData);
+
+      // 2. Add to data sources for the UI
+      const displayName = fileName ? fileName.replace(/\.[^/.]+$/, '') : `Data Sheet`;
+      const newSource = {
+        code: fileName || 'new_data',
+        name: displayName,
+        data: universalData,
+        vmCount: universalData.vmCount || 0
+      };
+      const updatedSources = [...dataSources, newSource];
+      setDataSources(updatedSources);
+      setActiveSheets([...activeSheets, newSource.code]);
+
+      // 3. Set the state with the rich data from the backend
+      setAssessmentData(backendAssessment);
+      setParsedData(universalData); // Keep the original parsed data for detailed views
+      setCurrentPage('assessment');
+
     } catch (error) {
-      console.error('Failed to get AI insights:', error);
+      console.error('Failed to get assessment from backend:', error);
+      // Optionally, set an error state to display to the user
     }
   };
 
@@ -69,23 +49,12 @@ function App() {
     
     setActiveSheets(newActiveSheets);
     
-    // Recalculate assessment with active sheets only
-    const activeDataSources = dataSources.filter(ds => newActiveSheets.includes(ds.code));
-    if (activeDataSources.length > 0) {
-      const anchors = createDataAnchors(activeDataSources);
-      const updatedAssessment = {
-        ...assessmentData,
-        totalVMs: anchors.size,
-        activeSheets: newActiveSheets
-      };
-      setAssessmentData(updatedAssessment);
-    }
+    // In the future, we could re-run the assessment with only active sheets.
+    // For now, this just toggles the UI.
   };
 
   const handleRestart = () => {
-    setCurrentJobId(null);
     setAssessmentData(null);
-    setAiInsights(null);
     setParsedData(null);
     setDataSources([]);
     setActiveSheets([]);
@@ -119,9 +88,7 @@ function App() {
           </AppBar>
           
           <LandingPage 
-            onUpload={handleUpload}
             onDataParsed={handleDataParsed}
-            currentJobId={currentJobId}
             onRestart={handleRestart}
           />
         </>
@@ -131,12 +98,10 @@ function App() {
         <AssessmentPage 
           assessmentData={assessmentData}
           parsedData={parsedData}
-          aiInsights={aiInsights}
           dataSources={dataSources}
           activeSheets={activeSheets}
           onBack={handleBackToLanding}
           onRestart={handleRestart}
-          onUpload={handleUpload}
           onDataParsed={handleDataParsed}
           onToggleSheet={handleToggleSheet}
         />
