@@ -1,0 +1,26 @@
+# Cloud Run deployment
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: stratarelay-api
+  annotations:
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/maxScale: "10"
+    spec:
+      containers:
+      - image: gcr.io/PROJECT_ID/stratarelay-api
+        ports:
+        - containerPort: 8080
+        env:
+        - name: GOOGLE_CLOUD_PROJECT
+          value: "PROJECT_ID"
+        - name: STORAGE_BUCKET
+          value: "PROJECT_ID.appspot.com"
+        resources:
+          limits:
+            cpu: "2"
+            memory: "2Gi"

@@ -1,27 +1,62 @@
-# StrataRelay
+# StrataRelay Analytics Platform
 
-A React application for StrataRelay.
+A full-stack analytics application with React MUI frontend and Python FastAPI backend on Google Cloud.
 
-## Getting Started
+## Features
 
-### Prerequisites
-- Node.js (v14 or higher)
-- npm or yarn
+- **Frontend**: React with Material-UI dark theme
+- **File Upload**: Drag-and-drop Excel file uploader to Cloud Storage
+- **Real-time Status**: Job timeline with Firestore integration
+- **Analytics**: Interactive charts with Chart.js
+- **Backend**: FastAPI service on Cloud Run
+- **Processing**: Pandas data processing with report generation
+- **Integration**: Power BI REST API, multi-cloud support (Azure, AWS, GCP, OCI)
 
-### Installation
-```bash
-npm install
+## Architecture
+
+```
+Frontend (React) → Firebase Storage → Cloud Function → Cloud Run (FastAPI) → Power BI
+                ↓                                           ↓
+            Firestore ←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←
 ```
 
-### Development
+## Setup
+
+### Frontend
 ```bash
+npm install
 npm start
 ```
 
-### Build
+### Backend
 ```bash
-npm run build
+cd backend
+pip install -r requirements.txt
+uvicorn app.main:app --reload
 ```
 
 ### Deployment
-The build folder contains the production-ready files for deployment.
+```bash
+# Build and deploy to Cloud Run
+gcloud builds submit --tag gcr.io/PROJECT_ID/stratarelay-api backend/
+gcloud run deploy stratarelay-api --image gcr.io/PROJECT_ID/stratarelay-api --platform managed
+
+# Deploy Cloud Function
+gcloud functions deploy trigger-processing --runtime python311 --trigger-bucket YOUR_BUCKET
+```
+
+## Environment Variables
+
+Copy `.env.example` to `.env` and configure:
+- Firebase credentials
+- Google Cloud project settings
+- API endpoints
+
+## Secret Manager Setup
+
+Store these secrets in Google Secret Manager:
+- `powerbi-token`: Power BI access token
+- `powerbi-dataset-id`: Power BI dataset ID
+- `azure-credentials`: Azure service principal
+- `aws-credentials`: AWS access keys
+- `oci-credentials`: OCI configuration
