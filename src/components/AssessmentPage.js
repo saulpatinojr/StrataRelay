@@ -6,13 +6,14 @@ import DataSheetManager from './DataSheetManager';
 import ExecutiveSummary from './ExecutiveSummary';
 import CostAnalysis from './CostAnalysis';
 import RecommendationsPanel from './RecommendationsPanel';
+import FloatingAI from './FloatingAI';
 
-// --- Guru Grade Component ---
 // A clean, high-level page that orchestrates the new, focused components.
 const AssessmentPage = () => {
   // Get all state and actions from the central store
   const {
     assessmentData,
+    parsedData,
     dataSources,
     activeSheets,
     backToLanding,
@@ -82,6 +83,7 @@ const AssessmentPage = () => {
       <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
         {renderContent()}
       </Container>
+      {parsedData && <FloatingAI assessmentData={parsedData} />}
     </Box>
   );
 };

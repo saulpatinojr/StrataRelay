@@ -1,7 +1,6 @@
 import React from 'react';
 import { Paper, Typography, Box, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Grid } from '@mui/material';
 
-// --- Guru Grade Component ---
 // Transparently shows the user how we get our numbers.
 const CostAnalysis = ({ analysis }) => {
   if (!analysis || !analysis.cost_estimates) return null;

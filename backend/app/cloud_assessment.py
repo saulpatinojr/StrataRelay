@@ -3,11 +3,10 @@ import numpy as np
 from typing import Dict, List, Any
 import uuid
 from google.cloud import firestore
-from fastapi import HTTPException # Import HTTPException
+from fastapi import HTTPException
 from .pricing_service import PricingService
 from .predictive_analytics_service import PredictiveAnalyticsService
 
-# --- Guru Grade Assessment Engine ---
 class CloudAssessmentEngine:
     def __init__(self):
         self.pricing_service = PricingService()
@@ -24,10 +23,9 @@ class CloudAssessmentEngine:
             print("Skipping metric save: Firestore client not available.")
             return
 
-        # Check for existing doc_code for this customer
         existing_docs = self.db.collection('assessmentMetrics')\
-            .where('customerId', '==', customer_id)\
-            .where('docCode', '==', doc_code)\
+            .where('customerId', '==', customer_id)
+            .where('docCode', '==', doc_code)
             .limit(1).get()
         
         if len(list(existing_docs)) > 0:
@@ -44,19 +42,17 @@ class CloudAssessmentEngine:
                 'sourceType': source_type,
                 'customerId': customer_id,
                 'docCode': doc_code,
-                'userId': "placeholder_user_id", # Placeholder for future user integration
+                'userId': "placeholder_user_id",
                 'entityId': vm_id,
                 'entityName': vm.get('VM', 'N/A'),
                 'timestamp': timestamp
             }
             
-            # Add CPU metric
             cpu_doc_ref = metrics_collection.document()
             cpu_metric = base_metric.copy()
             cpu_metric.update({'metricType': 'cpu_cores', 'value': vm.get('CPUs', 0)})
             batch.set(cpu_doc_ref, cpu_metric)
 
-            # Add Memory metric
             mem_doc_ref = metrics_collection.document()
             mem_metric = base_metric.copy()
             mem_metric.update({'metricType': 'memory_gb', 'value': vm.get('Memory', 0) / 1024})
@@ -69,10 +65,31 @@ class CloudAssessmentEngine:
             print(f"Error saving metrics to Firestore: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to save metrics: {str(e)}")
 
+    def _analyze_dataframe(self, df: pd.DataFrame, source_type: str, customer_id: str, doc_code: str, **kwargs) -> Dict[str, Any]:
+        assessment_id = str(uuid.uuid4())
+        
+        analysis = {
+            'assessmentId': assessment_id,
+            'summary': self._get_infrastructure_summary(df),
+            'compute_analysis': self._analyze_compute_resources(df, kwargs.get('df_vcpu')),
+            'memory_analysis': self._analyze_memory_usage(df, kwargs.get('df_vmemory')),
+            'storage_analysis': self._analyze_storage_requirements(kwargs.get('df_vdisk')) if kwargs.get('df_vdisk') is not None else {},
+            'licensing_analysis': self._analyze_licensing(df),
+            'cloud_readiness': self._assess_cloud_readiness(df),
+            'cost_estimates': self._estimate_cloud_costs(df),
+            'migration_complexity': self._assess_migration_complexity(df),
+            'recommendations': []
+        }
+
+        analysis['predictive_analytics'] = self._run_predictive_analysis(df)
+        analysis['recommendations'] = self._generate_recommendations(analysis)
+
+        self._save_metrics_to_firestore(df, assessment_id, source_type, customer_id, doc_code)
+        return analysis
+
     def analyze_rvtools_data(self, df_vinfo: pd.DataFrame, df_vcpu: pd.DataFrame = None, 
                            df_vmemory: pd.DataFrame = None, df_vdisk: pd.DataFrame = None, 
                            customer_id: str = "", doc_code: str = "") -> Dict[str, Any]:
-        assessment_id = str(uuid.uuid4())
         df_vinfo_processed = df_vinfo.rename(columns={
             'CPUs': 'CPUs',
             'Memory': 'Memory',
@@ -80,28 +97,9 @@ class CloudAssessmentEngine:
             'OS': 'OS',
             'VM': 'VM'
         })
-
-        analysis = {
-            'assessmentId': assessment_id,
-            'summary': self._get_infrastructure_summary(df_vinfo_processed),
-            'compute_analysis': self._analyze_compute_resources(df_vinfo_processed, df_vcpu),
-            'memory_analysis': self._analyze_memory_usage(df_vinfo_processed, df_vmemory),
-            'storage_analysis': self._analyze_storage_requirements(df_vdisk) if df_vdisk is not None else {},
-            'licensing_analysis': self._analyze_licensing(df_vinfo_processed),
-            'cloud_readiness': self._assess_cloud_readiness(df_vinfo_processed),
-            'cost_estimates': self._estimate_cloud_costs(df_vinfo_processed),
-            'migration_complexity': self._assess_migration_complexity(df_vinfo_processed),
-            'recommendations': []
-        }
-
-        analysis['predictive_analytics'] = self._run_predictive_analysis(df_vinfo_processed)
-        analysis['recommendations'] = self._generate_recommendations(analysis)
-
-        self._save_metrics_to_firestore(df_vinfo_processed, assessment_id, 'rvtools', customer_id, doc_code)
-        return analysis
+        return self._analyze_dataframe(df_vinfo_processed, 'rvtools', customer_id, doc_code, df_vcpu=df_vcpu, df_vmemory=df_vmemory, df_vdisk=df_vdisk)
 
     def analyze_azmigrate_data(self, df_az: pd.DataFrame, customer_id: str = "", doc_code: str = "") -> Dict[str, Any]:
-        assessment_id = str(uuid.uuid4())
         df_processed = df_az.rename(columns={
             'VM Name': 'VM',
             'vCPUs': 'CPUs',
@@ -111,28 +109,9 @@ class CloudAssessmentEngine:
         })
         df_processed['Memory'] = df_processed['Memory'] * 1024
         df_processed['Powerstate'] = df_processed['Powerstate'].apply(lambda x: 'poweredOn' if x == 'Started' else 'poweredOff')
-
-        analysis = {
-            'assessmentId': assessment_id,
-            'summary': self._get_infrastructure_summary(df_processed),
-            'compute_analysis': self._analyze_compute_resources(df_processed),
-            'memory_analysis': self._analyze_memory_usage(df_processed),
-            'storage_analysis': {},
-            'licensing_analysis': self._analyze_licensing(df_processed),
-            'cloud_readiness': self._assess_cloud_readiness(df_processed),
-            'cost_estimates': self._estimate_cloud_costs(df_processed),
-            'migration_complexity': self._assess_migration_complexity(df_processed),
-            'recommendations': []
-        }
-
-        analysis['predictive_analytics'] = self._run_predictive_analysis(df_processed)
-        analysis['recommendations'] = self._generate_recommendations(analysis)
-
-        self._save_metrics_to_firestore(df_processed, assessment_id, 'azmigrate', customer_id, doc_code)
-        return analysis
+        return self._analyze_dataframe(df_processed, 'azmigrate', customer_id, doc_code)
 
     def _run_predictive_analysis(self, df_vinfo: pd.DataFrame) -> Dict[str, Any]:
-        """Runs predictive analytics on the provided VM info."""
         return self.predictive_analytics_service.predict_cloud_spend(df_vinfo)
 
     def _get_infrastructure_summary(self, df: pd.DataFrame) -> Dict[str, Any]:
@@ -192,23 +171,20 @@ class CloudAssessmentEngine:
 
         cost_estimates = {}
         for provider, data in self.pricing_data.items():
+            sorted_instances = sorted(data['instances'], key=lambda x: x['cost_hourly'])
             total_cost = 0
             instance_mapping = []
             for _, vm in powered_on.iterrows():
                 cpu, mem = vm.get('CPUs', 2), vm.get('Memory', 4096) / 1024
                 
-                best_fit = min(
-                    (inst for inst in data['instances'] if inst['cpu'] >= cpu and inst['memory'] >= mem),
-                    key=lambda x: x['cost_hourly'],
-                    default=max(data['instances'], key=lambda x: x['cost_hourly']) # Default to largest if no fit
-                )
-                total_cost += best_fit['cost_hourly'] * 730 # 730 hours in a month
+                best_fit = next((inst for inst in sorted_instances if inst['cpu'] >= cpu and inst['memory'] >= mem), sorted_instances[-1])
+                total_cost += best_fit['cost_hourly'] * 730
                 instance_mapping.append({'vm_name': vm.get('VM', 'N/A'), 'mapped_instance': best_fit['type']})
 
             cost_estimates[provider] = {
                 'monthly_cost': round(total_cost, 2),
                 'annual_cost': round(total_cost * 12, 2),
-                'instance_mapping': instance_mapping[:5] # Show a sample of mappings
+                'instance_mapping': instance_mapping[:5]
             }
         return cost_estimates
 

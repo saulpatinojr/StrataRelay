@@ -1,15 +1,14 @@
 import React from 'react';
-import { Grid, Paper, Typography, Box, Card, CardContent, Chip } from '@mui/material';
+import { Grid, Paper, Typography, Box, useTheme } from '@mui/material';
 import { Bar, Doughnut } from 'react-chartjs-2';
 import { MonetizationOn, Dns, CloudDone } from '@mui/icons-material';
 
-// --- Guru Grade Component ---
 // A high-impact summary for executives.
 const MetricCard = ({ title, value, icon, color = 'text.primary' }) => (
   <Paper elevation={3} sx={{ p: 3, height: '100%' }}>
     <Box display="flex" alignItems="center" mb={1}>
       {icon}
-      <Typography variant="h6" component="h3" sx={{ ml: 1.5, fontWeight: 'bold' }}>
+      <Typography variant="h6" component="h3" sx={{ ml: 1..5, fontWeight: 'bold' }}>
         {title}
       </Typography>
     </Box>
@@ -20,6 +19,7 @@ const MetricCard = ({ title, value, icon, color = 'text.primary' }) => (
 );
 
 const ExecutiveSummary = ({ analysis }) => {
+  const theme = useTheme();
   if (!analysis) return null;
 
   const { summary, cloud_readiness, cost_estimates } = analysis;
@@ -28,8 +28,8 @@ const ExecutiveSummary = ({ analysis }) => {
     labels: ['Ready for Cloud', 'Needs Review', 'Complex'],
     datasets: [{
       data: [cloud_readiness.ready, cloud_readiness.needsWork, cloud_readiness.complex],
-      backgroundColor: ['#2e7d32', '#ed6c02', '#d32f2f'],
-      borderColor: '#121212',
+      backgroundColor: [theme.palette.success.main, theme.palette.warning.main, theme.palette.error.main],
+      borderColor: theme.palette.background.paper,
       borderWidth: 3,
     }],
   };
@@ -39,7 +39,7 @@ const ExecutiveSummary = ({ analysis }) => {
     datasets: [{
       label: 'Projected Monthly Cost',
       data: Object.values(cost_estimates).map(c => c.monthly_cost),
-      backgroundColor: ['#1976d2', '#d32f2f', '#2e7d32'],
+      backgroundColor: [theme.palette.primary.main, theme.palette.secondary.main, theme.palette.info.main],
     }],
   };
 
@@ -55,7 +55,7 @@ const ExecutiveSummary = ({ analysis }) => {
           <MetricCard title="Cloud Ready VMs" value={cloud_readiness.ready} icon={<CloudDone fontSize="large" />} color="success.main" />
         </Grid>
         <Grid item xs={12} sm={4}>
-          <MetricCard title="Est. AWS Monthly Cost" value={`$${cost_estimates.aws.monthly_cost.toLocaleString()}`} icon={<MonetizationOn fontSize="large" />} color="primary.main" />
+          <MetricCard title="Est. AWS Monthly Cost" value={`${cost_estimates.aws.monthly_cost.toLocaleString()}`} icon={<MonetizationOn fontSize="large" />} color="primary.main" />
         </Grid>
 
         {/* Charts */}

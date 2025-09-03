@@ -1,21 +1,28 @@
 import React from 'react';
-import { Container, Grid, Box, Fade, Typography, Button } from '@mui/material';
-import { Refresh } from '@mui/icons-material';
+import { Container, Grid, Box, Fade, Typography, AppBar, Toolbar } from '@mui/material';
 import FileUploader from './FileUploader';
 import AnimatedBackground from './AnimatedBackground';
 import CloudIcons from './CloudIcons';
 import useAssessmentStore from '../store/assessmentStore';
 
-// --- Guru Grade Component ---
 // LandingPage is now decoupled, getting its actions from the store.
 const LandingPage = () => {
   // Get actions directly from the store
   const fetchAssessment = useAssessmentStore(state => state.fetchAssessment);
-  const restart = useAssessmentStore(state => state.restart);
   const isLoading = useAssessmentStore(state => state.isLoading);
 
   return (
     <Box sx={{ minHeight: '100vh', position: 'relative' }}>
+      <AppBar position="static" elevation={0} sx={{ backgroundColor: 'transparent', color: '#fff' }}>
+        <Toolbar sx={{ minHeight: '80px' }}>
+          <Typography variant="h4" component="div" sx={{ 
+            fontWeight: 700,
+            letterSpacing: '1px',
+          }}>
+            StrataRelay
+          </Typography>
+        </Toolbar>
+      </AppBar>
       <AnimatedBackground />
       <CloudIcons />
       
@@ -38,15 +45,6 @@ const LandingPage = () => {
                 
                 <FileUploader onDataParsed={fetchAssessment} disabled={isLoading} />
 
-                <Button
-                  variant="text"
-                  size="small"
-                  startIcon={<Refresh />}
-                  onClick={restart}
-                  sx={{ mt: 4, color: 'grey.500' }}
-                >
-                  Start Over
-                </Button>
               </Box>
             </Fade>
           </Grid>

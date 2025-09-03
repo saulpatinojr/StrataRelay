@@ -6,16 +6,17 @@ from .cloud_assessment import CloudAssessmentEngine
 from .cloud_connector_service import CloudConnectorService
 from google.cloud import firestore
 
-# --- Guru Grade Initialization ---
+# --- FastAPI Initialization ---
 app = FastAPI(
     title="StrataRelay Intelligence API",
     description="Provides cloud assessment and migration analysis.",
     version="2.0.0"
 )
 
+# Allow all origins for development. In production, this should be restricted to the frontend's domain.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -24,6 +25,15 @@ app.add_middleware(
 assessment_engine = CloudAssessmentEngine()
 cloud_connector_service = CloudConnectorService()
 db = firestore.Client()
+
+# --- Validation Functions ---
+def validate_customer_id(customer_id: str):
+    if not (isinstance(customer_id, str) and len(customer_id) == 4):
+        raise HTTPException(status_code=400, detail="Invalid customer_id: Must be a 4-letter string.")
+
+def validate_doc_code(doc_code: str):
+    if not (isinstance(doc_code, str) and len(doc_code) == 2 and doc_code.isdigit()):
+        raise HTTPException(status_code=400, detail="Invalid doc_code: Must be a 2-digit string.")
 
 # --- API Endpoints ---
 
@@ -35,20 +45,17 @@ async def analyze_data(data: dict = Body(...), customer_id: str = Body(...), doc
     Requires customer_id (4-letter code) and doc_code (2-digit code).
     """
     try:
+        validate_customer_id(customer_id)
+        validate_doc_code(doc_code)
+
         file_type = data.get('fileType')
         raw_sheets = data.get('rawSheets', {})
 
         if not file_type or not raw_sheets:
             raise HTTPException(status_code=400, detail="Invalid data: 'fileType' and 'rawSheets' are required.")
-        if not (isinstance(customer_id, str) and len(customer_id) == 4):
-            raise HTTPException(status_code=400, detail="Invalid customer_id: Must be a 4-letter string.")
-        if not (isinstance(doc_code, str) and len(doc_code) == 2 and doc_code.isdigit()):
-            raise HTTPException(status_code=400, detail="Invalid doc_code: Must be a 2-digit string.")
 
-        # Convert the incoming JSON/dict sheets into Pandas DataFrames
         dataframes = {sheet_name: pd.DataFrame(sheet_data) for sheet_name, sheet_data in raw_sheets.items()}
 
-        # --- Analysis Routing ---
         if file_type == 'rvtools':
             vinfo_df = dataframes.get('vInfo')
             if vinfo_df is None:
@@ -76,8 +83,6 @@ async def analyze_data(data: dict = Body(...), customer_id: str = Body(...), doc
 
         return analysis_result
 
-    except HTTPException as http_exc:
-        raise http_exc
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
 
@@ -86,9 +91,7 @@ async def delete_customer_data(customer_id: str):
     """
     Deletes all assessment metrics data associated with a given customer_id.
     """
-    if not (isinstance(customer_id, str) and len(customer_id) == 4):
-        raise HTTPException(status_code=400, detail="Invalid customer_id: Must be a 4-letter string.")
-
+    validate_customer_id(customer_id)
     try:
         metrics_ref = db.collection('assessmentMetrics').where('customerId', '==', customer_id)
         docs = metrics_ref.stream()
@@ -102,7 +105,7 @@ async def delete_customer_data(customer_id: str):
                 batch.commit()
                 batch = db.batch()
         
-        if deleted_count > 0: # Commit any remaining documents
+        if deleted_count > 0:
             batch.commit()
 
         return {"message": f"Successfully deleted {deleted_count} metrics for customer {customer_id}."}
@@ -130,8 +133,6 @@ async def fetch_and_analyze_cloud_data(
 
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
-    except HTTPException as http_exc:
-        raise http_exc
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred during cloud data fetch and analysis: {str(e)}")
 

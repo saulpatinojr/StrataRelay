@@ -1,49 +1,29 @@
 import React, { useState } from 'react';
 import { 
   Box, Button, Dialog, DialogTitle, DialogContent, Chip, 
-  FormControlLabel, Checkbox, Typography, Alert, TextField,
-  IconButton, Collapse, Divider
+  FormControlLabel, Checkbox, Typography, Divider
 } from '@mui/material';
-import { FilterList, Upload, Refresh } from '@mui/icons-material';
+import { FilterList, Refresh } from '@mui/icons-material';
 import FileUploader from './FileUploader';
+import useAssessmentStore from '../store/assessmentStore';
 
-const DataSheetManager = ({ 
-  dataSources, 
-  activeSheets, 
-  onToggleSheet, 
-  onAddData,
-  onDataParsed,
-  onRestart
-}) => {
+const DataSheetManager = () => {
   const [filterOpen, setFilterOpen] = useState(false);
-  const [uploadOpen, setUploadOpen] = useState(false);
-  const [newSheetCode, setNewSheetCode] = useState('');
-  const [error, setError] = useState('');
+  const {
+    dataSources,
+    activeSheets,
+    toggleSheet,
+    fetchAssessment,
+    restart
+  } = useAssessmentStore();
 
-  const handleCodeChange = (e) => {
-    const code = e.target.value.slice(0, 2).toUpperCase();
-    setNewSheetCode(code);
-    
-    if (code && dataSources.some(ds => ds.code === code)) {
-      setError(`Code "${code}" already exists. Use a different 2-digit code.`);
-    } else {
-      setError('');
-    }
-  };
-
-  const handleUpload = (jobId, _, fileName) => {
-    if (!newSheetCode || error) return;
-    onAddData(jobId, newSheetCode, fileName);
-  };
-
-  const handleDataParsed = (assessment, rawData, _, fileName) => {
-    onDataParsed(assessment, rawData, newSheetCode, fileName);
-    setNewSheetCode('');
-    setUploadOpen(false);
+  const handleDataParsed = (assessment, universalData) => {
+    fetchAssessment(assessment, universalData);
+    setFilterOpen(false);
   };
 
   return (
-    <Box display="flex" gap={2} mb={3}>
+    <Box>
       <Button
         variant="outlined"
         startIcon={<FilterList />}
@@ -52,66 +32,44 @@ const DataSheetManager = ({
         Manage Data ({activeSheets.length}/{dataSources.length})
       </Button>
 
-      {/* Manage Data Dialog */}
-      <Dialog open={filterOpen} onClose={() => setFilterOpen(false)} maxWidth="sm">
+      <Dialog open={filterOpen} onClose={() => setFilterOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Manage Data Sheets</DialogTitle>
-        <DialogContent sx={{ p: 2 }}>
-          <Typography variant="subtitle1" sx={{ mb: 1.5 }}>Filter Data Sheets</Typography>
-          
+        <DialogContent dividers>
+          <Typography variant="h6" sx={{ mb: 1 }}>Filter Data Sheets</Typography>
           {dataSources.map(source => (
             <FormControlLabel
               key={source.code}
               control={
                 <Checkbox
                   checked={activeSheets.includes(source.code)}
-                  onChange={() => onToggleSheet(source.code)}
-                  size="small"
+                  onChange={() => toggleSheet(source.code)}
                 />
               }
-              label={
-                <Box display="flex" alignItems="center" gap={1}>
-                  <Chip label={source.code} size="small" />
-                  <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
-                    {source.name} ({source.vmCount} VMs)
-                  </Typography>
-                </Box>
-              }
-              sx={{ display: 'block', mb: 0.5 }}
+              label={`${source.name} (${source.vmCount} VMs)`}
             />
           ))}
           
-          <Divider sx={{ my: 1.5 }} />
+          <Divider sx={{ my: 2 }} />
+
+          <Typography variant="h6" sx={{ mb: 1 }}>Upload New Data</Typography>
+          <FileUploader onDataParsed={handleDataParsed} />
           
-          <Typography variant="subtitle1" sx={{ mb: 1.5 }}>Upload Data</Typography>
-          <FileUploader 
-            onUpload={handleUpload}
-            onDataParsed={handleDataParsed}
-            onCodeRequired={(fileName) => {
-              // Show code input after file is selected
-            }}
-          />
-          
-          <Divider sx={{ my: 1.5 }} />
-          
-          <Box>
-            <Typography variant="subtitle1" sx={{ mb: 1 }}>Restart Assessment</Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5, fontSize: '0.8rem' }}>
-              Clear all data and return to landing page
-            </Typography>
-            <Button
-              variant="outlined"
-              color="error"
-              startIcon={<Refresh />}
-              onClick={onRestart}
-              size="small"
-            >
-              Restart
-            </Button>
-          </Box>
+          <Divider sx={{ my: 2 }} />
+
+          <Typography variant="h6" sx={{ mb: 1 }}>Restart Assessment</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+            This will clear all data and return to the landing page.
+          </Typography>
+          <Button
+            variant="outlined"
+            color="error"
+            startIcon={<Refresh />}
+            onClick={restart}
+          >
+            Restart
+          </Button>
         </DialogContent>
       </Dialog>
-
-
     </Box>
   );
 };

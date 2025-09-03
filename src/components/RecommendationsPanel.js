@@ -1,7 +1,6 @@
 import React from 'react';
 import { Paper, Typography, Box, Grid, Alert, AlertTitle } from '@mui/material';
 
-// --- Guru Grade Component ---
 // Turns analysis into actionable advice.
 const RecommendationsPanel = ({ analysis }) => {
   if (!analysis || !analysis.recommendations || analysis.recommendations.length === 0) {
