@@ -5,8 +5,7 @@ import { CloudUpload } from '@mui/icons-material';
 import { ref, uploadBytes } from 'firebase/storage';
 import { collection, addDoc } from 'firebase/firestore';
 import { storage, db } from '../firebase';
-import * as XLSX from 'xlsx';
-import { parseRVToolsData, parseAzMigrateData, analyzeCloudReadiness } from '../services/dataParser';
+import { parseRVToolsData, parseAzMigrateData, analyzeCloudReadiness, parseExcelFile } from '../services/dataParser';
 
 const FileUploader = ({ onUpload, onDataParsed }) => {
   const onDrop = useCallback(async (acceptedFiles) => {
@@ -16,7 +15,7 @@ const FileUploader = ({ onUpload, onDataParsed }) => {
     try {
       // Parse Excel file locally first
       const arrayBuffer = await file.arrayBuffer();
-      const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+      const workbook = await parseExcelFile(arrayBuffer);
       
       let parsedData;
       if (file.name.toLowerCase().includes('rvtools')) {

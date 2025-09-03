@@ -1,3 +1,9 @@
+import * as XLSX from 'xlsx';
+
+export const parseExcelFile = async (arrayBuffer) => {
+  return XLSX.read(arrayBuffer, { type: 'array' });
+};
+
 export const parseRVToolsData = (workbook) => {
   const sheets = workbook.SheetNames;
   const parsedData = {};

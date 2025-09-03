@@ -1,24 +1,16 @@
 import React, { useState } from 'react';
-import { ThemeProvider, createTheme } from '@mui/material/styles';
-import { CssBaseline, AppBar, Toolbar, Typography, Container, Grid, Box } from '@mui/material';
+import { ThemeProvider } from '@mui/material/styles';
+import { CssBaseline, AppBar, Toolbar, Typography, Container, Grid, Box, Fade } from '@mui/material';
 import FileUploader from './components/FileUploader';
-import JobTimeline from './components/JobTimeline';
+import SimpleTimeline from './components/SimpleTimeline';
 import CloudAssessmentDashboard from './components/CloudAssessmentDashboard';
 import AIChat from './components/AIChat';
 import TestDataInfo from './components/TestDataInfo';
 import { analyzeCloudReadiness } from './services/geminiService';
+import { getThemeByDataType } from './theme/dynamicTheme';
+import AnimatedBackground from './components/AnimatedBackground';
 
-const darkTheme = createTheme({
-  palette: {
-    mode: 'dark',
-    primary: { main: '#90caf9' },
-    secondary: { main: '#f48fb1' },
-    background: {
-      default: '#121212',
-      paper: '#1e1e1e'
-    }
-  }
-});
+
 
 function App() {
   const [currentJobId, setCurrentJobId] = useState(null);
@@ -43,12 +35,21 @@ function App() {
     }
   };
 
+  const currentTheme = getThemeByDataType(assessmentData);
+
   return (
-    <ThemeProvider theme={darkTheme}>
+    <ThemeProvider theme={currentTheme}>
       <CssBaseline />
-      <AppBar position="static">
-        <Toolbar>
-          <Typography variant="h6" component="div">
+      <AnimatedBackground />
+      <AppBar position="static" elevation={0}>
+        <Toolbar sx={{ minHeight: '80px' }}>
+          <Typography variant="h4" component="div" sx={{ 
+            fontFamily: '"Orbitron", sans-serif',
+            fontWeight: 700,
+            background: 'linear-gradient(45deg, #667eea 30%, #764ba2 90%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent'
+          }}>
             StrataRelay Analytics
           </Typography>
         </Toolbar>
@@ -57,31 +58,51 @@ function App() {
       <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
         <Grid container spacing={4}>
           <Grid item xs={12} md={6}>
-            <Box mb={3}>
-              <Typography variant="h5" gutterBottom>Upload Excel File</Typography>
-              <TestDataInfo />
-              <FileUploader onUpload={handleUpload} onDataParsed={handleDataParsed} />
-            </Box>
+            <Fade in timeout={800}>
+              <Box mb={3}>
+                <Typography variant="h4" gutterBottom sx={{
+                  fontFamily: '"Rajdhani", sans-serif',
+                  fontWeight: 600,
+                  background: 'linear-gradient(45deg, #667eea 30%, #764ba2 90%)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent'
+                }}>Upload Excel File</Typography>
+                <TestDataInfo />
+                <FileUploader onUpload={handleUpload} onDataParsed={handleDataParsed} />
+              </Box>
+            </Fade>
           </Grid>
           
           <Grid item xs={12} md={6}>
             {currentJobId && (
-              <JobTimeline jobId={currentJobId} />
+              <Fade in timeout={1000}>
+                <Box>
+                  <SimpleTimeline jobId={currentJobId} />
+                </Box>
+              </Fade>
             )}
           </Grid>
           
           {assessmentData && (
             <Grid item xs={12}>
-              <CloudAssessmentDashboard 
-                assessmentData={assessmentData} 
-                aiInsights={aiInsights}
-              />
+              <Fade in timeout={1200}>
+                <Box>
+                  <CloudAssessmentDashboard 
+                    assessmentData={assessmentData} 
+                    aiInsights={aiInsights}
+                  />
+                </Box>
+              </Fade>
             </Grid>
           )}
           
           {assessmentData && (
             <Grid item xs={12}>
-              <AIChat assessmentData={parsedData} />
+              <Fade in timeout={1400}>
+                <Box>
+                  <AIChat assessmentData={parsedData} />
+                </Box>
+              </Fade>
             </Grid>
           )}
         </Grid>
