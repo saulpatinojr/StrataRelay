@@ -5,7 +5,7 @@ export const getThemeByDataType = (assessmentData) => {
   let secondaryColor = '#ec4899';
   let backgroundGradient = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
 
-  if (assessmentData) {
+  if (assessmentData && assessmentData.cloudReadiness && assessmentData.licensing) {
     const { cloudReadiness, licensing } = assessmentData;
     
     if (cloudReadiness.ready > cloudReadiness.complex) {

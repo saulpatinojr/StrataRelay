@@ -37,7 +37,7 @@ const DetailedDataView = ({ parsedData, assessmentData }) => {
   };
 
   const columns = getColumns(currentData);
-  const paginatedData = currentData.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+  const paginatedData = Array.isArray(currentData) ? currentData.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage) : [];
 
   return (
     <Paper sx={{ p: 3, mt: 3 }}>

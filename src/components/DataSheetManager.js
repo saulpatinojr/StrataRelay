@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 import { 
   Box, Button, Dialog, DialogTitle, DialogContent, Chip, 
   FormControlLabel, Checkbox, Typography, Alert, TextField,
-  IconButton, Collapse
+  IconButton, Collapse, Divider
 } from '@mui/material';
-import { FilterList, Add, ExpandMore, ExpandLess, Upload } from '@mui/icons-material';
+import { FilterList, Upload, Refresh } from '@mui/icons-material';
 import FileUploader from './FileUploader';
 
 const DataSheetManager = ({ 
@@ -12,7 +12,8 @@ const DataSheetManager = ({
   activeSheets, 
   onToggleSheet, 
   onAddData,
-  onDataParsed 
+  onDataParsed,
+  onRestart
 }) => {
   const [filterOpen, setFilterOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -48,72 +49,69 @@ const DataSheetManager = ({
         startIcon={<FilterList />}
         onClick={() => setFilterOpen(true)}
       >
-        Filter Sheets ({activeSheets.length}/{dataSources.length})
-      </Button>
-      
-      <Button
-        variant="outlined"
-        startIcon={<Add />}
-        onClick={() => setUploadOpen(true)}
-      >
-        Add Data
+        Manage Data ({activeSheets.length}/{dataSources.length})
       </Button>
 
-      {/* Filter Dialog */}
-      <Dialog open={filterOpen} onClose={() => setFilterOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Filter Data Sheets</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Toggle data sheets on/off by their 2-digit codes:
-          </Typography>
+      {/* Manage Data Dialog */}
+      <Dialog open={filterOpen} onClose={() => setFilterOpen(false)} maxWidth="sm">
+        <DialogTitle>Manage Data Sheets</DialogTitle>
+        <DialogContent sx={{ p: 2 }}>
+          <Typography variant="subtitle1" sx={{ mb: 1.5 }}>Filter Data Sheets</Typography>
           
           {dataSources.map(source => (
-            <Box key={source.code} sx={{ mb: 1 }}>
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={activeSheets.includes(source.code)}
-                    onChange={() => onToggleSheet(source.code)}
-                  />
-                }
-                label={
-                  <Box display="flex" alignItems="center" gap={1}>
-                    <Chip label={source.code} size="small" />
-                    <Typography variant="body2">
-                      {source.name} ({source.vmCount} VMs)
-                    </Typography>
-                  </Box>
-                }
-              />
-            </Box>
+            <FormControlLabel
+              key={source.code}
+              control={
+                <Checkbox
+                  checked={activeSheets.includes(source.code)}
+                  onChange={() => onToggleSheet(source.code)}
+                  size="small"
+                />
+              }
+              label={
+                <Box display="flex" alignItems="center" gap={1}>
+                  <Chip label={source.code} size="small" />
+                  <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
+                    {source.name} ({source.vmCount} VMs)
+                  </Typography>
+                </Box>
+              }
+              sx={{ display: 'block', mb: 0.5 }}
+            />
           ))}
+          
+          <Divider sx={{ my: 1.5 }} />
+          
+          <Typography variant="subtitle1" sx={{ mb: 1.5 }}>Upload Data</Typography>
+          <FileUploader 
+            onUpload={handleUpload}
+            onDataParsed={handleDataParsed}
+            onCodeRequired={(fileName) => {
+              // Show code input after file is selected
+            }}
+          />
+          
+          <Divider sx={{ my: 1.5 }} />
+          
+          <Box>
+            <Typography variant="subtitle1" sx={{ mb: 1 }}>Restart Assessment</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5, fontSize: '0.8rem' }}>
+              Clear all data and return to landing page
+            </Typography>
+            <Button
+              variant="outlined"
+              color="error"
+              startIcon={<Refresh />}
+              onClick={onRestart}
+              size="small"
+            >
+              Restart
+            </Button>
+          </Box>
         </DialogContent>
       </Dialog>
 
-      {/* Upload Dialog */}
-      <Dialog open={uploadOpen} onClose={() => setUploadOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Add New Data Sheet</DialogTitle>
-        <DialogContent>
-          <TextField
-            label="2-Digit Code"
-            value={newSheetCode}
-            onChange={handleCodeChange}
-            placeholder="e.g., 03, 04, 05"
-            size="small"
-            sx={{ mb: 2, minWidth: 200 }}
-            inputProps={{ maxLength: 2 }}
-            error={!!error}
-            helperText={error}
-          />
-          
-          {newSheetCode && !error && (
-            <FileUploader 
-              onUpload={handleUpload}
-              onDataParsed={handleDataParsed}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
+
     </Box>
   );
 };

@@ -5,6 +5,10 @@ import EnhancedAssessmentDashboard from './EnhancedAssessmentDashboard';
 import DataSummary from './DataSummary';
 import DetailedDataView from './DetailedDataView';
 import DataSheetManager from './DataSheetManager';
+import ExecutiveDashboard from './ExecutiveDashboard';
+import AIInsightsPanel from './AIInsightsPanel';
+import AdvancedCharts from './AdvancedCharts';
+import { calculateAdvancedMetrics } from '../services/enterpriseMetrics';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -40,6 +44,15 @@ const AssessmentPage = ({
 }) => {
   const [openDialog, setOpenDialog] = useState(false);
   const [selectedMetric, setSelectedMetric] = useState(null);
+  const [enterpriseMetrics, setEnterpriseMetrics] = useState(null);
+
+  // Calculate enterprise metrics when data changes
+  React.useEffect(() => {
+    if (dataSources && activeSheets) {
+      const metrics = calculateAdvancedMetrics(dataSources, activeSheets);
+      setEnterpriseMetrics(metrics);
+    }
+  }, [dataSources, activeSheets]);
 
   return (
     <Box sx={{ minHeight: '100vh' }}>
@@ -64,29 +77,46 @@ const AssessmentPage = ({
             StrataRelay Analytics
           </Typography>
           
-          <Box display="flex" gap={2}>
-            <DataSheetManager 
-              dataSources={dataSources}
-              activeSheets={activeSheets}
-              onToggleSheet={onToggleSheet}
-              onAddData={onUpload}
-              onDataParsed={onDataParsed}
-            />
-            
-            <Button
-              variant="outlined"
-              startIcon={<Refresh />}
-              onClick={onRestart}
-              sx={{ color: 'white', borderColor: 'white' }}
-            >
-              Restart Assessment
-            </Button>
-          </Box>
+          <DataSheetManager 
+            dataSources={dataSources}
+            activeSheets={activeSheets}
+            onToggleSheet={onToggleSheet}
+            onAddData={onUpload}
+            onDataParsed={onDataParsed}
+            onRestart={onRestart}
+          />
         </Toolbar>
       </AppBar>
       
       <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
         <Grid container spacing={3}>
+          {/* Executive Dashboard */}
+          <Grid item xs={12}>
+            <Fade in timeout={600}>
+              <Box>
+                <ExecutiveDashboard metrics={enterpriseMetrics} />
+              </Box>
+            </Fade>
+          </Grid>
+          
+          {/* AI Insights */}
+          <Grid item xs={12}>
+            <Fade in timeout={700}>
+              <Box>
+                <AIInsightsPanel metrics={enterpriseMetrics} dataSources={dataSources} />
+              </Box>
+            </Fade>
+          </Grid>
+          
+          {/* Advanced Charts */}
+          <Grid item xs={12}>
+            <Fade in timeout={750}>
+              <Box>
+                <AdvancedCharts metrics={enterpriseMetrics} />
+              </Box>
+            </Fade>
+          </Grid>
+          
           <Grid item xs={12}>
             <Fade in timeout={800}>
               <Box>

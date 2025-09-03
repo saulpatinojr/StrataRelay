@@ -31,7 +31,11 @@ const EnhancedAssessmentDashboard = ({
 
   if (!assessmentData) return null;
 
-  const { compute, storage, licensing, cloudReadiness, recommendations } = assessmentData;
+  const compute = assessmentData.compute || { totalCPU: 0, totalMemoryGB: 0 };
+  const storage = assessmentData.storage || { totalStorageGB: 0 };
+  const licensing = assessmentData.licensing || {};
+  const cloudReadiness = assessmentData.cloudReadiness || { ready: 0, needsWork: 0, complex: 0 };
+  const recommendations = assessmentData.recommendations || [];
 
   const handleDrillDown = (metricType, data) => {
     setSelectedMetric({ type: metricType, data });
