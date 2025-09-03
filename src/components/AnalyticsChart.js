@@ -1,9 +1,7 @@
 import React from 'react';
-import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement } from 'chart.js';
 import { Bar, Doughnut } from 'react-chartjs-2';
+import ChartJS from '../utils/chartSetup'; // Import centralized chart setup
 import { Paper, Typography, Grid } from '@mui/material';
-
-ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement);
 
 const AnalyticsChart = ({ data }) => {
   const barData = {

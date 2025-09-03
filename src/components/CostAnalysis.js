@@ -6,6 +6,7 @@ const CostAnalysis = ({ analysis }) => {
   if (!analysis || !analysis.cost_estimates) return null;
 
   const { cost_estimates } = analysis;
+  console.log('Cost estimates:', cost_estimates); // Debug log
 
   return (
     <Box sx={{ mt: 4 }}>

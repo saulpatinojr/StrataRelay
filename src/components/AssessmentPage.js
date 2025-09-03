@@ -3,6 +3,7 @@ import { Container, Grid, Box, Fade, AppBar, Toolbar, Typography, Button, Circul
 import { ArrowBack } from '@mui/icons-material';
 import useAssessmentStore from '../store/assessmentStore';
 import DataSheetManager from './DataSheetManager';
+import PricingOptions from './PricingOptions';
 import ExecutiveSummary from './ExecutiveSummary';
 import CostAnalysis from './CostAnalysis';
 import RecommendationsPanel from './RecommendationsPanel';
@@ -81,6 +82,12 @@ const AssessmentPage = () => {
       </AppBar>
       
       <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+        {assessmentData && (
+          <PricingOptions onOptionsChange={(options) => {
+            console.log('Updating pricing with options:', options);
+            fetchAssessment(parsedData, 'updated-assessment', options);
+          }} />
+        )}
         {renderContent()}
       </Container>
       {parsedData && <FloatingAI assessmentData={parsedData} />}

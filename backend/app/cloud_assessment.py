@@ -8,12 +8,23 @@ from .pricing_service import PricingService
 from .predictive_analytics_service import PredictiveAnalyticsService
 
 class CloudAssessmentEngine:
-    def __init__(self):
+    def __init__(self, pricing_options=None):
         self.pricing_service = PricingService()
-        self.pricing_data = self.pricing_service.get_all_cloud_pricing()
+        if pricing_options:
+            region_map = {
+                'aws': pricing_options['region']['aws'],
+                'azure': pricing_options['region']['azure'], 
+                'gcp': pricing_options['region']['gcp']
+            }
+            self.pricing_data = self.pricing_service.get_all_cloud_pricing(region_map, pricing_options['os'])
+        else:
+            self.pricing_data = self.pricing_service.get_all_cloud_pricing()
+        print(f"CloudAssessmentEngine initialized with pricing data: {list(self.pricing_data.keys())}")
+        for provider, data in self.pricing_data.items():
+            print(f"{provider.upper()}: {len(data.get('instances', []))} instances")
         self.predictive_analytics_service = PredictiveAnalyticsService()
         try:
-            self.db = firestore.Client()
+            self.db = firestore.Client(project='stratarelay-87aaf', database='stratarelaydb')
         except Exception as e:
             print(f"Warning: Firestore client could not be initialized: {e}")
             self.db = None
@@ -23,13 +34,17 @@ class CloudAssessmentEngine:
             print("Skipping metric save: Firestore client not available.")
             return
 
-        existing_docs = self.db.collection('assessmentMetrics')\
-            .where('customerId', '==', customer_id)
-            .where('docCode', '==', doc_code)
-            .limit(1).get()
+        # Check for existing metrics and warn if overwriting
+        existing_docs = self.db.collection('assessmentMetrics').where('customerId', '==', customer_id).where('docCode', '==', doc_code).get()
+        existing_docs_list = list(existing_docs)
         
-        if len(list(existing_docs)) > 0:
-            raise HTTPException(status_code=409, detail=f"Doc code '{doc_code}' already exists for customer '{customer_id}'. Please choose another.")
+        if len(existing_docs_list) > 0:
+            print(f"WARNING: File already uploaded - overwriting existing assessment for customer '{customer_id}', doc code '{doc_code}'")
+            batch_delete = self.db.batch()
+            for doc in existing_docs_list:
+                batch_delete.delete(doc.reference)
+            batch_delete.commit()
+            return {'warning': f"File already uploaded - previous assessment overwritten"}
 
         batch = self.db.batch()
         metrics_collection = self.db.collection('assessmentMetrics')
@@ -60,7 +75,7 @@ class CloudAssessmentEngine:
 
         try:
             batch.commit()
-            print(f"Successfully saved {len(batch._writes)} metrics for assessment {assessment_id}.")
+            print(f"Successfully saved metrics for assessment {assessment_id}.")
         except Exception as e:
             print(f"Error saving metrics to Firestore: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to save metrics: {str(e)}")
@@ -84,31 +99,122 @@ class CloudAssessmentEngine:
         analysis['predictive_analytics'] = self._run_predictive_analysis(df)
         analysis['recommendations'] = self._generate_recommendations(analysis)
 
-        self._save_metrics_to_firestore(df, assessment_id, source_type, customer_id, doc_code)
+        save_result = self._save_metrics_to_firestore(df, assessment_id, source_type, customer_id, doc_code)
+        if save_result and 'warning' in save_result:
+            analysis['warning'] = save_result['warning']
         return analysis
 
     def analyze_rvtools_data(self, df_vinfo: pd.DataFrame, df_vcpu: pd.DataFrame = None, 
                            df_vmemory: pd.DataFrame = None, df_vdisk: pd.DataFrame = None, 
                            customer_id: str = "", doc_code: str = "") -> Dict[str, Any]:
-        df_vinfo_processed = df_vinfo.rename(columns={
-            'CPUs': 'CPUs',
-            'Memory': 'Memory',
-            'Powerstate': 'Powerstate',
-            'OS': 'OS',
-            'VM': 'VM'
-        })
+        
+        print(f"RVTools vInfo columns: {list(df_vinfo.columns)}")
+        
+        # Map actual RVTools column names to expected names
+        column_mapping = {}
+        
+        # Find OS column
+        if 'OS according to the configuration file' in df_vinfo.columns:
+            column_mapping['OS according to the configuration file'] = 'OS'
+        elif 'OS according to the VMware Tools' in df_vinfo.columns:
+            column_mapping['OS according to the VMware Tools'] = 'OS'
+        elif 'OS' in df_vinfo.columns:
+            pass  # Already correct
+        
+        # Find CPU column
+        if 'CPUs' in df_vinfo.columns:
+            pass  # Already correct
+        elif 'CPU' in df_vinfo.columns:
+            column_mapping['CPU'] = 'CPUs'
+        elif 'vCPU' in df_vinfo.columns:
+            column_mapping['vCPU'] = 'CPUs'
+        
+        # Find Memory column
+        if 'Memory' in df_vinfo.columns:
+            pass  # Already correct
+        elif 'Memory MB' in df_vinfo.columns:
+            column_mapping['Memory MB'] = 'Memory'
+        elif 'RAM' in df_vinfo.columns:
+            column_mapping['RAM'] = 'Memory'
+        
+        df_vinfo_processed = df_vinfo.rename(columns=column_mapping)
+        
+        # Ensure required columns exist with defaults
+        if 'OS' not in df_vinfo_processed.columns:
+            df_vinfo_processed['OS'] = 'Unknown'
+        if 'CPUs' not in df_vinfo_processed.columns:
+            df_vinfo_processed['CPUs'] = 2  # Default
+        if 'Memory' not in df_vinfo_processed.columns:
+            df_vinfo_processed['Memory'] = 4096  # Default 4GB
+        if 'Powerstate' not in df_vinfo_processed.columns:
+            df_vinfo_processed['Powerstate'] = 'poweredOn'  # Default
+        if 'VM' not in df_vinfo_processed.columns:
+            df_vinfo_processed['VM'] = df_vinfo_processed.index.astype(str)  # Use index as VM name
+            
+        print(f"Processed columns: {list(df_vinfo_processed.columns)}")
         return self._analyze_dataframe(df_vinfo_processed, 'rvtools', customer_id, doc_code, df_vcpu=df_vcpu, df_vmemory=df_vmemory, df_vdisk=df_vdisk)
 
     def analyze_azmigrate_data(self, df_az: pd.DataFrame, customer_id: str = "", doc_code: str = "") -> Dict[str, Any]:
-        df_processed = df_az.rename(columns={
-            'VM Name': 'VM',
-            'vCPUs': 'CPUs',
-            'Memory (MB)': 'Memory',
-            'Operating System': 'OS',
-            'Power Status': 'Powerstate'
-        })
-        df_processed['Memory'] = df_processed['Memory'] * 1024
-        df_processed['Powerstate'] = df_processed['Powerstate'].apply(lambda x: 'poweredOn' if x == 'Started' else 'poweredOff')
+        print(f"AzMigrate columns: {list(df_az.columns)}")
+        
+        # Flexible column mapping for Azure Migrate
+        column_mapping = {}
+        
+        # Find VM name column
+        for col in df_az.columns:
+            if 'vm' in col.lower() and 'name' in col.lower():
+                column_mapping[col] = 'VM'
+                break
+        
+        # Find CPU column
+        for col in df_az.columns:
+            if 'cpu' in col.lower() or 'core' in col.lower():
+                column_mapping[col] = 'CPUs'
+                break
+        
+        # Find Memory column
+        for col in df_az.columns:
+            if 'memory' in col.lower() or 'ram' in col.lower():
+                column_mapping[col] = 'Memory'
+                break
+        
+        # Find OS column
+        for col in df_az.columns:
+            if 'os' in col.lower() or 'operating' in col.lower():
+                column_mapping[col] = 'OS'
+                break
+        
+        # Find Power/Status column
+        for col in df_az.columns:
+            if 'power' in col.lower() or 'status' in col.lower():
+                column_mapping[col] = 'Powerstate'
+                break
+        
+        df_processed = df_az.rename(columns=column_mapping)
+        
+        # Ensure required columns exist with defaults
+        if 'VM' not in df_processed.columns:
+            df_processed['VM'] = df_processed.index.astype(str)
+        if 'CPUs' not in df_processed.columns:
+            df_processed['CPUs'] = 2
+        if 'Memory' not in df_processed.columns:
+            df_processed['Memory'] = 4096
+        if 'OS' not in df_processed.columns:
+            df_processed['OS'] = 'Unknown'
+        if 'Powerstate' not in df_processed.columns:
+            df_processed['Powerstate'] = 'poweredOn'
+        
+        # Convert memory to MB if it's in GB
+        if 'Memory' in df_processed.columns and df_processed['Memory'].max() < 1000:
+            df_processed['Memory'] = df_processed['Memory'] * 1024
+        
+        # Standardize power state
+        if 'Powerstate' in df_processed.columns:
+            df_processed['Powerstate'] = df_processed['Powerstate'].apply(
+                lambda x: 'poweredOn' if str(x).lower() in ['started', 'running', 'on', 'poweredon'] else 'poweredOff'
+            )
+        
+        print(f"AzMigrate processed columns: {list(df_processed.columns)}")
         return self._analyze_dataframe(df_processed, 'azmigrate', customer_id, doc_code)
 
     def _run_predictive_analysis(self, df_vinfo: pd.DataFrame) -> Dict[str, Any]:
@@ -143,10 +249,27 @@ class CloudAssessmentEngine:
     def _analyze_storage_requirements(self, df_vdisk: pd.DataFrame) -> Dict[str, Any]:
         if df_vdisk is None or df_vdisk.empty:
             return {}
-        total_gb = df_vdisk['Capacity MB'].sum() / 1024
+        
+        # Try different possible column names for capacity
+        capacity_columns = ['Capacity MB', 'Capacity MiB', 'Capacity', 'Size MB', 'Size', 'Capacity (MB)']
+        capacity_col = None
+        
+        for col in capacity_columns:
+            if col in df_vdisk.columns:
+                capacity_col = col
+                break
+        
+        if capacity_col is None:
+            print(f"Warning: No capacity column found in vDisk data. Available columns: {list(df_vdisk.columns)}")
+            return {'error': 'No capacity data available'}
+        
+        total_mb = df_vdisk[capacity_col].sum()
+        total_gb = total_mb / 1024 if 'MB' in capacity_col else total_mb
+        
         return {
             'total_storage_gb': int(total_gb),
             'total_storage_tb': int(total_gb / 1024),
+            'capacity_column_used': capacity_col
         }
 
     def _analyze_licensing(self, df: pd.DataFrame) -> Dict[str, Any]:
@@ -177,7 +300,18 @@ class CloudAssessmentEngine:
             for _, vm in powered_on.iterrows():
                 cpu, mem = vm.get('CPUs', 2), vm.get('Memory', 4096) / 1024
                 
-                best_fit = next((inst for inst in sorted_instances if inst['cpu'] >= cpu and inst['memory'] >= mem), sorted_instances[-1])
+                # Find best fit instance
+                best_fit = None
+                for inst in sorted_instances:
+                    if inst.get('cpu', 0) >= cpu and inst.get('memory', 0) >= mem:
+                        best_fit = inst
+                        break
+                
+                # If no perfect fit, use the largest available
+                if best_fit is None and sorted_instances:
+                    best_fit = sorted_instances[-1]
+                elif best_fit is None:
+                    continue  # Skip if no instances available
                 total_cost += best_fit['cost_hourly'] * 730
                 instance_mapping.append({'vm_name': vm.get('VM', 'N/A'), 'mapped_instance': best_fit['type']})
 

@@ -1,9 +1,12 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import { getAssessment } from '../services/assessmentService';
 
 // A single, centralized store for our application state.
 // This is the "single source of truth" for the UI.
-const useAssessmentStore = create((set, get) => ({
+const useAssessmentStore = create(
+  persist(
+    (set, get) => ({
   // State
   assessmentData: null,
   parsedData: null,
@@ -14,11 +17,11 @@ const useAssessmentStore = create((set, get) => ({
   error: null,
 
   // Actions
-  fetchAssessment: async (universalData, fileName = '') => {
+  fetchAssessment: async (universalData, fileName = '', pricingOptions = null) => {
     set({ isLoading: true, error: null });
     try {
       // 1. Call the backend service to get the rich assessment data
-      const backendAssessment = await getAssessment(universalData);
+      const backendAssessment = await getAssessment(universalData, pricingOptions);
 
       // 2. Create a new data source entry for the UI
       const displayName = fileName ? fileName.replace(/\.[^/.]+$/, '') : `Data Sheet`;
@@ -68,6 +71,16 @@ const useAssessmentStore = create((set, get) => ({
   backToLanding: () => {
     set({ currentPage: 'landing' });
   },
-}));
+    }),
+    {
+      name: 'assessment-storage',
+      partialize: (state) => ({
+        currentPage: state.currentPage,
+        dataSources: state.dataSources.map(ds => ({ code: ds.code, name: ds.name, vmCount: ds.vmCount })),
+        activeSheets: state.activeSheets
+      })
+    }
+  )
+);
 
 export default useAssessmentStore;

@@ -33,7 +33,7 @@ const FileUploader = ({ onDataParsed, disabled }) => {
       const assessment = analyzeCloudReadiness(universalData.vms);
 
       if (onDataParsed) {
-        onDataParsed(assessment, universalData);
+        onDataParsed(universalData, file.name);
       }
     } catch (error) {
       console.error('Upload failed:', error);
