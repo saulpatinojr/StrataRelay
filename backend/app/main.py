@@ -1,14 +1,17 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Body, Query
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
-from google.cloud import storage, firestore, secretmanager
-from docx import Document
-from pptx import Presentation
-import requests
-import json
 import os
+from .cloud_assessment import CloudAssessmentEngine
+from .cloud_connector_service import CloudConnectorService
+from google.cloud import firestore
 
-app = FastAPI()
+# --- Guru Grade Initialization ---
+app = FastAPI(
+    title="StrataRelay Intelligence API",
+    description="Provides cloud assessment and migration analysis.",
+    version="2.0.0"
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -18,111 +21,127 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize clients
-storage_client = storage.Client()
+assessment_engine = CloudAssessmentEngine()
+cloud_connector_service = CloudConnectorService()
 db = firestore.Client()
-secret_client = secretmanager.SecretManagerServiceClient()
 
-def get_secret(secret_name):
-    name = f"projects/{os.getenv('GOOGLE_CLOUD_PROJECT')}/secrets/{secret_name}/versions/latest"
-    response = secret_client.access_secret_version(request={"name": name})
-    return response.payload.data.decode("UTF-8")
+# --- API Endpoints ---
 
-@app.post("/process-file")
-async def process_file(job_id: str, file_path: str):
+@app.post("/analyze", tags=["Assessment"])
+async def analyze_data(data: dict = Body(...), customer_id: str = Body(...), doc_code: str = Body(...)):
+    """
+    Accepts structured data (e.g., from RVTools, Azure Migrate), runs it 
+    through the CloudAssessmentEngine, and returns a comprehensive analysis.
+    Requires customer_id (4-letter code) and doc_code (2-digit code).
+    """
     try:
-        # Update job status
-        db.collection('jobs').document(job_id).update({'status': 'processing'})
-        
-        # Download file from storage
-        bucket = storage_client.bucket(os.getenv('STORAGE_BUCKET'))
-        blob = bucket.blob(file_path)
-        file_content = blob.download_as_bytes()
-        
-        # Process with pandas
-        df = pd.read_excel(file_content)
-        
-        # Generate reports
-        doc_url = generate_docx_report(df, job_id)
-        ppt_url = generate_pptx_report(df, job_id)
-        
-        # Push to Power BI
-        await push_to_powerbi(df)
-        
-        # Update job with completion
-        db.collection('jobs').document(job_id).update({
-            'status': 'completed',
-            'reportUrl': doc_url,
-            'pptUrl': ppt_url
-        })
-        
-        return {"status": "success", "job_id": job_id}
-        
+        file_type = data.get('fileType')
+        raw_sheets = data.get('rawSheets', {})
+
+        if not file_type or not raw_sheets:
+            raise HTTPException(status_code=400, detail="Invalid data: 'fileType' and 'rawSheets' are required.")
+        if not (isinstance(customer_id, str) and len(customer_id) == 4):
+            raise HTTPException(status_code=400, detail="Invalid customer_id: Must be a 4-letter string.")
+        if not (isinstance(doc_code, str) and len(doc_code) == 2 and doc_code.isdigit()):
+            raise HTTPException(status_code=400, detail="Invalid doc_code: Must be a 2-digit string.")
+
+        # Convert the incoming JSON/dict sheets into Pandas DataFrames
+        dataframes = {sheet_name: pd.DataFrame(sheet_data) for sheet_name, sheet_data in raw_sheets.items()}
+
+        # --- Analysis Routing ---
+        if file_type == 'rvtools':
+            vinfo_df = dataframes.get('vInfo')
+            if vinfo_df is None:
+                raise HTTPException(status_code=400, detail="'vInfo' sheet not found for rvtools analysis.")
+
+            analysis_result = assessment_engine.analyze_rvtools_data(
+                df_vinfo=vinfo_df,
+                df_vcpu=dataframes.get('vCPU'),
+                df_vmemory=dataframes.get('vMemory'),
+                df_vdisk=dataframes.get('vDisk'),
+                customer_id=customer_id,
+                doc_code=doc_code
+            )
+        elif file_type == 'azmigrate':
+            az_df = dataframes.get('AzureVMs')
+            if az_df is None:
+                raise HTTPException(status_code=400, detail="'AzureVMs' sheet not found for azmigrate analysis.")
+            analysis_result = assessment_engine.analyze_azmigrate_data(
+                df_az=az_df,
+                customer_id=customer_id,
+                doc_code=doc_code
+            )
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported file type: '{file_type}'")
+
+        return analysis_result
+
+    except HTTPException as http_exc:
+        raise http_exc
     except Exception as e:
-        db.collection('jobs').document(job_id).update({'status': 'error', 'error': str(e)})
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
 
-def generate_docx_report(df, job_id):
-    doc = Document()
-    doc.add_heading('Analytics Report', 0)
-    doc.add_paragraph(f'Data Summary: {len(df)} rows processed')
-    
-    # Add table
-    table = doc.add_table(rows=1, cols=len(df.columns))
-    hdr_cells = table.rows[0].cells
-    for i, col in enumerate(df.columns):
-        hdr_cells[i].text = col
-    
-    for _, row in df.head(10).iterrows():
-        row_cells = table.add_row().cells
-        for i, value in enumerate(row):
-            row_cells[i].text = str(value)
-    
-    # Upload to storage
-    bucket = storage_client.bucket(os.getenv('STORAGE_BUCKET'))
-    blob = bucket.blob(f'reports/{job_id}_report.docx')
-    doc.save(f'/tmp/{job_id}_report.docx')
-    blob.upload_from_filename(f'/tmp/{job_id}_report.docx')
-    
-    return blob.public_url
+@app.delete("/customer-data/{customer_id}", tags=["Data Management"])
+async def delete_customer_data(customer_id: str):
+    """
+    Deletes all assessment metrics data associated with a given customer_id.
+    """
+    if not (isinstance(customer_id, str) and len(customer_id) == 4):
+        raise HTTPException(status_code=400, detail="Invalid customer_id: Must be a 4-letter string.")
 
-def generate_pptx_report(df, job_id):
-    prs = Presentation()
-    slide = prs.slides.add_slide(prs.slide_layouts[0])
-    title = slide.shapes.title
-    subtitle = slide.placeholders[1]
-    
-    title.text = "Analytics Report"
-    subtitle.text = f"Data processed: {len(df)} rows"
-    
-    # Upload to storage
-    bucket = storage_client.bucket(os.getenv('STORAGE_BUCKET'))
-    blob = bucket.blob(f'reports/{job_id}_presentation.pptx')
-    prs.save(f'/tmp/{job_id}_presentation.pptx')
-    blob.upload_from_filename(f'/tmp/{job_id}_presentation.pptx')
-    
-    return blob.public_url
-
-async def push_to_powerbi(df):
     try:
-        powerbi_token = get_secret('powerbi-token')
-        dataset_id = get_secret('powerbi-dataset-id')
+        metrics_ref = db.collection('assessmentMetrics').where('customerId', '==', customer_id)
+        docs = metrics_ref.stream()
         
-        headers = {
-            'Authorization': f'Bearer {powerbi_token}',
-            'Content-Type': 'application/json'
-        }
+        deleted_count = 0
+        batch = db.batch()
+        for doc in docs:
+            batch.delete(doc.reference)
+            deleted_count += 1
+            if deleted_count % 499 == 0: # Firestore batch limit is 500
+                batch.commit()
+                batch = db.batch()
         
-        data = df.to_dict('records')
-        response = requests.post(
-            f'https://api.powerbi.com/v1.0/myorg/datasets/{dataset_id}/rows',
-            headers=headers,
-            json={'rows': data}
-        )
-        response.raise_for_status()
+        if deleted_count > 0: # Commit any remaining documents
+            batch.commit()
+
+        return {"message": f"Successfully deleted {deleted_count} metrics for customer {customer_id}."}
     except Exception as e:
-        print(f"Power BI push failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete data for customer {customer_id}: {str(e)}")
+
+@app.get("/fetch-and-analyze-cloud-data", tags=["Data Ingestion"])
+async def fetch_and_analyze_cloud_data(
+    provider: str = Query(None, description="Optional: Specify a cloud provider (aws, azure, gcp) to fetch data from. If not specified, fetches from all.")
+):
+    """
+    Fetches inventory data directly from specified cloud provider(s) (mocked for now)
+    and runs it through the assessment engine.
+    """
+    try:
+        inventory_data = cloud_connector_service.fetch_all_cloud_inventory(provider=provider)
+        
+        if not inventory_data:
+            raise HTTPException(status_code=404, detail=f"No inventory data found for provider: {provider or 'all'}")
+
+        df_vinfo = pd.DataFrame(inventory_data)
+        analysis_result = assessment_engine.analyze_rvtools_data(df_vinfo=df_vinfo)
+
+        return analysis_result
+
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred during cloud data fetch and analysis: {str(e)}")
+
+# --- Health Check & Entry Point ---
+
+@app.get("/health", tags=["System"])
+async def health_check():
+    """A simple health check endpoint to confirm the API is running."""
+    return {"status": "ok"}
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8080)))

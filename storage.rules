@@ -1,0 +1,14 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Allow read/write access to uploads folder
+    match /uploads/{allPaths=**} {
+      allow read, write: if true;
+    }
+    
+    // Allow read/write access to reports folder
+    match /reports/{allPaths=**} {
+      allow read, write: if true;
+    }
+  }
+}

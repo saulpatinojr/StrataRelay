@@ -27,7 +27,19 @@ const AIChat = ({ assessmentData }) => {
   };
 
   const handleAskQuestion = async () => {
-    if (!question.trim() || !assessmentData) return;
+    if (!question.trim()) {
+      setChatHistory(prev => [...prev, 
+        { type: 'error', message: 'Please enter a question.' }
+      ]);
+      return;
+    }
+    
+    if (!assessmentData) {
+      setChatHistory(prev => [...prev, 
+        { type: 'error', message: 'No assessment data available. Please upload data first.' }
+      ]);
+      return;
+    }
 
     setLoading(true);
     const userQuestion = question;
@@ -99,7 +111,7 @@ const AIChat = ({ assessmentData }) => {
   ];
 
   return (
-    <Paper sx={{ p: 2, height: '400px', display: 'flex', flexDirection: 'column' }}>
+    <Paper sx={{ p: 2, height: '100%', display: 'flex', flexDirection: 'column' }}>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
         <Typography variant="h6">
           <Psychology sx={{ mr: 1, verticalAlign: 'middle' }} />
@@ -117,7 +129,7 @@ const AIChat = ({ assessmentData }) => {
       </Box>
 
       {/* Chat History */}
-      <Box sx={{ flexGrow: 1, overflowY: 'auto', mb: 2, maxHeight: '250px' }}>
+      <Box sx={{ flexGrow: 1, overflowY: 'auto', mb: 2 }}>
         {chatHistory.length === 0 ? (
           <Box>
             <Typography variant="body2" color="text.secondary" gutterBottom>

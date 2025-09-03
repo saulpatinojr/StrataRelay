@@ -24,10 +24,10 @@ const FloatingAI = ({ assessmentData }) => {
       <Dialog
         open={open}
         onClose={() => setOpen(false)}
-        maxWidth="sm"
+        maxWidth="md"
         fullWidth
         PaperProps={{
-          sx: { height: '500px', maxHeight: '500px' }
+          sx: { height: '80vh', maxHeight: '800px', minHeight: '600px' }
         }}
       >
         <Box display="flex" justifyContent="flex-end" p={1}>
@@ -35,7 +35,7 @@ const FloatingAI = ({ assessmentData }) => {
             <Close />
           </IconButton>
         </Box>
-        <DialogContent sx={{ p: 2, pt: 0 }}>
+        <DialogContent sx={{ p: 2, pt: 0, height: '100%' }}>
           <AIChat assessmentData={assessmentData} />
         </DialogContent>
       </Dialog>
