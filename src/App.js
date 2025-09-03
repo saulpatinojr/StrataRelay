@@ -3,8 +3,10 @@ import { ThemeProvider, createTheme } from '@mui/material/styles';
 import { CssBaseline, AppBar, Toolbar, Typography, Container, Grid, Box } from '@mui/material';
 import FileUploader from './components/FileUploader';
 import JobTimeline from './components/JobTimeline';
-import AnalyticsChart from './components/AnalyticsChart';
+import CloudAssessmentDashboard from './components/CloudAssessmentDashboard';
+import AIChat from './components/AIChat';
 import TestDataInfo from './components/TestDataInfo';
+import { analyzeCloudReadiness } from './services/geminiService';
 
 const darkTheme = createTheme({
   palette: {
@@ -20,10 +22,25 @@ const darkTheme = createTheme({
 
 function App() {
   const [currentJobId, setCurrentJobId] = useState(null);
-  const [analyticsData, setAnalyticsData] = useState(null);
+  const [assessmentData, setAssessmentData] = useState(null);
+  const [aiInsights, setAiInsights] = useState(null);
+  const [parsedData, setParsedData] = useState(null);
 
   const handleUpload = (jobId) => {
     setCurrentJobId(jobId);
+  };
+
+  const handleDataParsed = async (assessment, rawData) => {
+    setAssessmentData(assessment);
+    setParsedData(rawData);
+    
+    // Get AI insights
+    try {
+      const insights = await analyzeCloudReadiness(rawData.vInfo || [], null);
+      setAiInsights(insights);
+    } catch (error) {
+      console.error('Failed to get AI insights:', error);
+    }
   };
 
   return (
@@ -43,7 +60,7 @@ function App() {
             <Box mb={3}>
               <Typography variant="h5" gutterBottom>Upload Excel File</Typography>
               <TestDataInfo />
-              <FileUploader onUpload={handleUpload} />
+              <FileUploader onUpload={handleUpload} onDataParsed={handleDataParsed} />
             </Box>
           </Grid>
           
@@ -53,12 +70,20 @@ function App() {
             )}
           </Grid>
           
-          <Grid item xs={12}>
-            <Typography variant="h5" gutterBottom sx={{ mt: 4 }}>
-              Analytics Dashboard
-            </Typography>
-            <AnalyticsChart data={analyticsData} />
-          </Grid>
+          {assessmentData && (
+            <Grid item xs={12}>
+              <CloudAssessmentDashboard 
+                assessmentData={assessmentData} 
+                aiInsights={aiInsights}
+              />
+            </Grid>
+          )}
+          
+          {assessmentData && (
+            <Grid item xs={12}>
+              <AIChat assessmentData={parsedData} />
+            </Grid>
+          )}
         </Grid>
       </Container>
     </ThemeProvider>
