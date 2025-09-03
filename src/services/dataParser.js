@@ -8,8 +8,8 @@ export const parseRVToolsData = (workbook) => {
   const sheets = workbook.SheetNames;
   const parsedData = {};
 
-  // Key sheets to parse from RVTools
-  const keySheets = ['vInfo', 'vCPU', 'vMemory', 'vDisk', 'vNetwork', 'vHost'];
+  // Parse ALL RVTools sheets (27 tabs)
+  const keySheets = sheets; // Parse every available sheet
 
   keySheets.forEach(sheetName => {
     if (sheets.includes(sheetName)) {
@@ -25,8 +25,8 @@ export const parseAzMigrateData = (workbook) => {
   const sheets = workbook.SheetNames;
   const parsedData = {};
 
-  // Key sheets from Azure Migrate assessment
-  const keySheets = ['Servers', 'Assessment', 'Recommendations', 'Cost'];
+  // Parse ALL Azure Migrate sheets
+  const keySheets = sheets; // Parse every available sheet
 
   keySheets.forEach(sheetName => {
     if (sheets.includes(sheetName)) {

@@ -1,16 +1,28 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { Box, Typography, Paper } from '@mui/material';
+import { Box, Typography, Paper, Alert } from '@mui/material';
 import { CloudUpload } from '@mui/icons-material';
 import { ref, uploadBytes } from 'firebase/storage';
 import { collection, addDoc } from 'firebase/firestore';
 import { storage, db } from '../firebase';
 import { parseRVToolsData, parseAzMigrateData, analyzeCloudReadiness, parseExcelFile } from '../services/dataParser';
+import { validateFileName } from '../utils/fileValidator';
 
 const FileUploader = ({ onUpload, onDataParsed }) => {
+  const [fileError, setFileError] = useState(null);
+
   const onDrop = useCallback(async (acceptedFiles) => {
     const file = acceptedFiles[0];
     if (!file) return;
+
+    // Validate file name
+    const validation = validateFileName(file.name);
+    if (!validation.isValid) {
+      setFileError(validation.error);
+      return;
+    }
+    
+    setFileError(null);
 
     try {
       // Parse Excel file locally first
@@ -18,12 +30,10 @@ const FileUploader = ({ onUpload, onDataParsed }) => {
       const workbook = await parseExcelFile(arrayBuffer);
       
       let parsedData;
-      if (file.name.toLowerCase().includes('rvtools')) {
+      if (validation.type === 'rvtools') {
         parsedData = parseRVToolsData(workbook);
-      } else if (file.name.toLowerCase().includes('migrate') || file.name.toLowerCase().includes('readiness')) {
+      } else if (validation.type === 'azmigrate') {
         parsedData = parseAzMigrateData(workbook);
-      } else {
-        parsedData = parseRVToolsData(workbook); // Default to RVTools format
       }
       
       const assessment = analyzeCloudReadiness(parsedData);
@@ -59,26 +69,33 @@ const FileUploader = ({ onUpload, onDataParsed }) => {
   });
 
   return (
-    <Paper
-      {...getRootProps()}
-      sx={{
-        p: 4,
-        textAlign: 'center',
-        cursor: 'pointer',
-        border: '2px dashed',
-        borderColor: isDragActive ? 'primary.main' : 'grey.500',
-        bgcolor: 'background.paper'
-      }}
-    >
-      <input {...getInputProps()} />
-      <CloudUpload sx={{ fontSize: 48, color: 'primary.main', mb: 2 }} />
-      <Typography variant="h6">
-        {isDragActive ? 'Drop Excel file here' : 'Drag & drop RVTools or Azure Migrate Excel file'}
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-        Supported: RVTools export, Cloud-Readiness-Assessment.xlsx
-      </Typography>
-    </Paper>
+    <Box>
+      {fileError && (
+        <Alert severity="error" sx={{ mb: 2, whiteSpace: 'pre-line' }}>
+          {fileError}
+        </Alert>
+      )}
+      <Paper
+        {...getRootProps()}
+        sx={{
+          p: 4,
+          textAlign: 'center',
+          cursor: 'pointer',
+          border: '2px dashed',
+          borderColor: isDragActive ? 'primary.main' : 'grey.500',
+          bgcolor: 'background.paper'
+        }}
+      >
+        <input {...getInputProps()} />
+        <CloudUpload sx={{ fontSize: 48, color: 'primary.main', mb: 2 }} />
+        <Typography variant="h6">
+          {isDragActive ? 'Drop files here' : 'Drag & drop data files'}
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+          Supported: RVTools export and Az Migrate Report
+        </Typography>
+      </Paper>
+    </Box>
   );
 };
 

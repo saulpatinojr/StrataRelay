@@ -26,12 +26,45 @@ const AnimatedBackground = () => {
           `,
           animation: 'float 6s ease-in-out infinite',
         },
+        '&::after': {
+          content: '"☁" "⚡" "🔧" "🌐"',
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          fontSize: '60px',
+          opacity: 0.1,
+          pointerEvents: 'none',
+          display: 'flex',
+          justifyContent: 'space-around',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          animation: 'cloudFloat 12s ease-in-out infinite',
+        },
         '@keyframes float': {
           '0%, 100%': {
-            transform: 'translateY(0px) rotate(0deg)',
+            transform: 'translateY(0px)',
           },
           '50%': {
-            transform: 'translateY(-20px) rotate(180deg)',
+            transform: 'translateY(-20px)',
+          },
+        },
+        '@keyframes cloudFloat': {
+          '0%': {
+            transform: 'translateY(0px) translateX(0px)',
+          },
+          '25%': {
+            transform: 'translateY(-30px) translateX(20px)',
+          },
+          '50%': {
+            transform: 'translateY(-10px) translateX(-15px)',
+          },
+          '75%': {
+            transform: 'translateY(-25px) translateX(10px)',
+          },
+          '100%': {
+            transform: 'translateY(0px) translateX(0px)',
           },
         },
       }}
