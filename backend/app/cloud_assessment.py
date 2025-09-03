@@ -1,254 +1,246 @@
 import pandas as pd
 import numpy as np
 from typing import Dict, List, Any
-import json
+import uuid
+from google.cloud import firestore
+from fastapi import HTTPException # Import HTTPException
+from .pricing_service import PricingService
+from .predictive_analytics_service import PredictiveAnalyticsService
 
+# --- Guru Grade Assessment Engine ---
 class CloudAssessmentEngine:
     def __init__(self):
-        self.cloud_skus = {
-            'aws': {
-                'small': {'cpu': 2, 'memory': 4, 'cost_monthly': 50},
-                'medium': {'cpu': 4, 'memory': 8, 'cost_monthly': 100},
-                'large': {'cpu': 8, 'memory': 16, 'cost_monthly': 200},
-                'xlarge': {'cpu': 16, 'memory': 32, 'cost_monthly': 400}
-            },
-            'azure': {
-                'small': {'cpu': 2, 'memory': 4, 'cost_monthly': 55},
-                'medium': {'cpu': 4, 'memory': 8, 'cost_monthly': 110},
-                'large': {'cpu': 8, 'memory': 16, 'cost_monthly': 220},
-                'xlarge': {'cpu': 16, 'memory': 32, 'cost_monthly': 440}
-            },
-            'gcp': {
-                'small': {'cpu': 2, 'memory': 4, 'cost_monthly': 48},
-                'medium': {'cpu': 4, 'memory': 8, 'cost_monthly': 96},
-                'large': {'cpu': 8, 'memory': 16, 'cost_monthly': 192},
-                'xlarge': {'cpu': 16, 'memory': 32, 'cost_monthly': 384}
+        self.pricing_service = PricingService()
+        self.pricing_data = self.pricing_service.get_all_cloud_pricing()
+        self.predictive_analytics_service = PredictiveAnalyticsService()
+        try:
+            self.db = firestore.Client()
+        except Exception as e:
+            print(f"Warning: Firestore client could not be initialized: {e}")
+            self.db = None
+
+    def _save_metrics_to_firestore(self, df: pd.DataFrame, assessment_id: str, source_type: str, customer_id: str, doc_code: str):
+        if not self.db:
+            print("Skipping metric save: Firestore client not available.")
+            return
+
+        # Check for existing doc_code for this customer
+        existing_docs = self.db.collection('assessmentMetrics')\
+            .where('customerId', '==', customer_id)\
+            .where('docCode', '==', doc_code)\
+            .limit(1).get()
+        
+        if len(list(existing_docs)) > 0:
+            raise HTTPException(status_code=409, detail=f"Doc code '{doc_code}' already exists for customer '{customer_id}'. Please choose another.")
+
+        batch = self.db.batch()
+        metrics_collection = self.db.collection('assessmentMetrics')
+        timestamp = firestore.SERVER_TIMESTAMP
+
+        for _, vm in df.iterrows():
+            vm_id = vm.get('VM', str(uuid.uuid4()))
+            base_metric = {
+                'assessmentId': assessment_id,
+                'sourceType': source_type,
+                'customerId': customer_id,
+                'docCode': doc_code,
+                'userId': "placeholder_user_id", # Placeholder for future user integration
+                'entityId': vm_id,
+                'entityName': vm.get('VM', 'N/A'),
+                'timestamp': timestamp
             }
-        }
+            
+            # Add CPU metric
+            cpu_doc_ref = metrics_collection.document()
+            cpu_metric = base_metric.copy()
+            cpu_metric.update({'metricType': 'cpu_cores', 'value': vm.get('CPUs', 0)})
+            batch.set(cpu_doc_ref, cpu_metric)
+
+            # Add Memory metric
+            mem_doc_ref = metrics_collection.document()
+            mem_metric = base_metric.copy()
+            mem_metric.update({'metricType': 'memory_gb', 'value': vm.get('Memory', 0) / 1024})
+            batch.set(mem_doc_ref, mem_metric)
+
+        try:
+            batch.commit()
+            print(f"Successfully saved {len(batch._writes)} metrics for assessment {assessment_id}.")
+        except Exception as e:
+            print(f"Error saving metrics to Firestore: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to save metrics: {str(e)}")
 
     def analyze_rvtools_data(self, df_vinfo: pd.DataFrame, df_vcpu: pd.DataFrame = None, 
-                           df_vmemory: pd.DataFrame = None, df_vdisk: pd.DataFrame = None) -> Dict[str, Any]:
-        """Comprehensive RVTools data analysis for cloud readiness"""
-        
+                           df_vmemory: pd.DataFrame = None, df_vdisk: pd.DataFrame = None, 
+                           customer_id: str = "", doc_code: str = "") -> Dict[str, Any]:
+        assessment_id = str(uuid.uuid4())
+        df_vinfo_processed = df_vinfo.rename(columns={
+            'CPUs': 'CPUs',
+            'Memory': 'Memory',
+            'Powerstate': 'Powerstate',
+            'OS': 'OS',
+            'VM': 'VM'
+        })
+
         analysis = {
-            'summary': self._get_infrastructure_summary(df_vinfo),
-            'compute_analysis': self._analyze_compute_resources(df_vinfo, df_vcpu),
-            'memory_analysis': self._analyze_memory_usage(df_vinfo, df_vmemory),
+            'assessmentId': assessment_id,
+            'summary': self._get_infrastructure_summary(df_vinfo_processed),
+            'compute_analysis': self._analyze_compute_resources(df_vinfo_processed, df_vcpu),
+            'memory_analysis': self._analyze_memory_usage(df_vinfo_processed, df_vmemory),
             'storage_analysis': self._analyze_storage_requirements(df_vdisk) if df_vdisk is not None else {},
-            'licensing_analysis': self._analyze_licensing(df_vinfo),
-            'cloud_readiness': self._assess_cloud_readiness(df_vinfo),
-            'cost_estimates': self._estimate_cloud_costs(df_vinfo),
-            'migration_complexity': self._assess_migration_complexity(df_vinfo),
+            'licensing_analysis': self._analyze_licensing(df_vinfo_processed),
+            'cloud_readiness': self._assess_cloud_readiness(df_vinfo_processed),
+            'cost_estimates': self._estimate_cloud_costs(df_vinfo_processed),
+            'migration_complexity': self._assess_migration_complexity(df_vinfo_processed),
             'recommendations': []
         }
-        
+
+        analysis['predictive_analytics'] = self._run_predictive_analysis(df_vinfo_processed)
         analysis['recommendations'] = self._generate_recommendations(analysis)
+
+        self._save_metrics_to_firestore(df_vinfo_processed, assessment_id, 'rvtools', customer_id, doc_code)
         return analysis
 
+    def analyze_azmigrate_data(self, df_az: pd.DataFrame, customer_id: str = "", doc_code: str = "") -> Dict[str, Any]:
+        assessment_id = str(uuid.uuid4())
+        df_processed = df_az.rename(columns={
+            'VM Name': 'VM',
+            'vCPUs': 'CPUs',
+            'Memory (MB)': 'Memory',
+            'Operating System': 'OS',
+            'Power Status': 'Powerstate'
+        })
+        df_processed['Memory'] = df_processed['Memory'] * 1024
+        df_processed['Powerstate'] = df_processed['Powerstate'].apply(lambda x: 'poweredOn' if x == 'Started' else 'poweredOff')
+
+        analysis = {
+            'assessmentId': assessment_id,
+            'summary': self._get_infrastructure_summary(df_processed),
+            'compute_analysis': self._analyze_compute_resources(df_processed),
+            'memory_analysis': self._analyze_memory_usage(df_processed),
+            'storage_analysis': {},
+            'licensing_analysis': self._analyze_licensing(df_processed),
+            'cloud_readiness': self._assess_cloud_readiness(df_processed),
+            'cost_estimates': self._estimate_cloud_costs(df_processed),
+            'migration_complexity': self._assess_migration_complexity(df_processed),
+            'recommendations': []
+        }
+
+        analysis['predictive_analytics'] = self._run_predictive_analysis(df_processed)
+        analysis['recommendations'] = self._generate_recommendations(analysis)
+
+        self._save_metrics_to_firestore(df_processed, assessment_id, 'azmigrate', customer_id, doc_code)
+        return analysis
+
+    def _run_predictive_analysis(self, df_vinfo: pd.DataFrame) -> Dict[str, Any]:
+        """Runs predictive analytics on the provided VM info."""
+        return self.predictive_analytics_service.predict_cloud_spend(df_vinfo)
+
     def _get_infrastructure_summary(self, df: pd.DataFrame) -> Dict[str, Any]:
-        """Get high-level infrastructure summary"""
         powered_on = df[df['Powerstate'] == 'poweredOn']
-        
         return {
             'total_vms': len(df),
             'powered_on_vms': len(powered_on),
-            'total_vcpus': powered_on['CPUs'].sum() if 'CPUs' in df.columns else 0,
-            'total_memory_gb': (powered_on['Memory'].sum() / 1024) if 'Memory' in df.columns else 0,
-            'avg_cpu_per_vm': powered_on['CPUs'].mean() if 'CPUs' in df.columns else 0,
-            'avg_memory_per_vm_gb': (powered_on['Memory'].mean() / 1024) if 'Memory' in df.columns else 0
+            'total_vcpus': int(powered_on['CPUs'].sum()),
+            'total_memory_gb': int(powered_on['Memory'].sum() / 1024),
         }
 
     def _analyze_compute_resources(self, df_vinfo: pd.DataFrame, df_vcpu: pd.DataFrame = None) -> Dict[str, Any]:
-        """Analyze CPU utilization and right-sizing opportunities"""
         powered_on = df_vinfo[df_vinfo['Powerstate'] == 'poweredOn']
-        
-        cpu_distribution = powered_on['CPUs'].value_counts().to_dict() if 'CPUs' in powered_on.columns else {}
-        
-        # Identify over-provisioned VMs (high CPU allocation, low utilization if available)
-        over_provisioned = powered_on[powered_on['CPUs'] > 8] if 'CPUs' in powered_on.columns else pd.DataFrame()
-        
+        cpu_dist = powered_on['CPUs'].value_counts().to_dict()
         return {
-            'cpu_distribution': cpu_distribution,
-            'over_provisioned_vms': len(over_provisioned),
-            'right_sizing_candidates': len(powered_on[powered_on['CPUs'] <= 2]) if 'CPUs' in powered_on.columns else 0,
-            'high_cpu_vms': len(powered_on[powered_on['CPUs'] >= 16]) if 'CPUs' in powered_on.columns else 0
+            'cpu_distribution': {str(k): int(v) for k, v in cpu_dist.items()},
+            'right_sizing_candidates_cpu': len(powered_on[powered_on['CPUs'] > 8]),
         }
 
     def _analyze_memory_usage(self, df_vinfo: pd.DataFrame, df_vmemory: pd.DataFrame = None) -> Dict[str, Any]:
-        """Analyze memory allocation and usage patterns"""
         powered_on = df_vinfo[df_vinfo['Powerstate'] == 'poweredOn']
-        
-        if 'Memory' not in powered_on.columns:
-            return {}
-            
         memory_gb = powered_on['Memory'] / 1024
-        
         return {
-            'total_allocated_memory_gb': memory_gb.sum(),
-            'avg_memory_per_vm_gb': memory_gb.mean(),
-            'memory_distribution': {
-                'small_vms_2gb': len(memory_gb[memory_gb <= 2]),
-                'medium_vms_4_8gb': len(memory_gb[(memory_gb > 2) & (memory_gb <= 8)]),
-                'large_vms_16gb': len(memory_gb[(memory_gb > 8) & (memory_gb <= 16)]),
-                'xlarge_vms_32gb_plus': len(memory_gb[memory_gb > 16])
-            }
+            'total_allocated_memory_gb': int(memory_gb.sum()),
+            'avg_memory_per_vm_gb': int(memory_gb.mean()),
+            'right_sizing_candidates_memory': len(memory_gb[memory_gb > 32]),
         }
 
     def _analyze_storage_requirements(self, df_vdisk: pd.DataFrame) -> Dict[str, Any]:
-        """Analyze storage requirements and IOPS needs"""
-        if df_vdisk.empty:
+        if df_vdisk is None or df_vdisk.empty:
             return {}
-            
-        total_storage_mb = df_vdisk['Capacity MB'].sum() if 'Capacity MB' in df_vdisk.columns else 0
-        
+        total_gb = df_vdisk['Capacity MB'].sum() / 1024
         return {
-            'total_storage_gb': total_storage_mb / 1024,
-            'total_storage_tb': total_storage_mb / (1024 * 1024),
-            'disk_count': len(df_vdisk),
-            'avg_disk_size_gb': (total_storage_mb / len(df_vdisk) / 1024) if len(df_vdisk) > 0 else 0
+            'total_storage_gb': int(total_gb),
+            'total_storage_tb': int(total_gb / 1024),
         }
 
     def _analyze_licensing(self, df: pd.DataFrame) -> Dict[str, Any]:
-        """Analyze OS licensing and optimization opportunities"""
-        if 'OS' not in df.columns:
-            return {}
-            
         os_counts = df['OS'].value_counts()
-        
-        windows_vms = sum([count for os, count in os_counts.items() if 'windows' in str(os).lower()])
-        linux_vms = sum([count for os, count in os_counts.items() if 'linux' in str(os).lower()])
-        
+        windows_vms = sum(count for os, count in os_counts.items() if 'windows' in str(os).lower())
+        linux_vms = sum(count for os, count in os_counts.items() if 'linux' in str(os).lower())
         return {
             'windows_vms': windows_vms,
             'linux_vms': linux_vms,
-            'other_os': len(df) - windows_vms - linux_vms,
-            'os_distribution': os_counts.head(10).to_dict(),
-            'hybrid_benefit_eligible': windows_vms  # Assume all Windows VMs eligible
+            'os_distribution': {k: int(v) for k, v in os_counts.head(5).to_dict().items()}
         }
 
     def _assess_cloud_readiness(self, df: pd.DataFrame) -> Dict[str, Any]:
-        """Assess cloud migration readiness based on VM characteristics"""
-        powered_on = df[df['Powerstate'] == 'poweredOn']
-        
-        if powered_on.empty:
-            return {'ready': 0, 'needs_work': 0, 'complex': 0}
-            
-        ready = 0
-        needs_work = 0
-        complex_migration = 0
-        
-        for _, vm in powered_on.iterrows():
-            cpu = vm.get('CPUs', 0)
-            memory_gb = vm.get('Memory', 0) / 1024 if vm.get('Memory') else 0
-            
-            # Simple readiness criteria
-            if cpu <= 4 and memory_gb <= 8:
-                ready += 1
-            elif cpu <= 8 and memory_gb <= 16:
-                needs_work += 1
-            else:
-                complex_migration += 1
-                
-        return {
-            'ready': ready,
-            'needs_work': needs_work,
-            'complex': complex_migration,
-            'readiness_percentage': (ready / len(powered_on)) * 100 if len(powered_on) > 0 else 0
-        }
+        ready = len(df[(df['CPUs'] <= 4) & (df['Memory'] <= 16384)])
+        needs_work = len(df[(df['CPUs'] > 4) & (df['CPUs'] <= 8) & (df['Memory'] > 16384) & (df['Memory'] <= 65536)])
+        complex_migration = len(df[(df['CPUs'] > 8) | (df['Memory'] > 65536)])
+        return {'ready': ready, 'needsWork': needs_work, 'complex': complex_migration}
 
     def _estimate_cloud_costs(self, df: pd.DataFrame) -> Dict[str, Any]:
-        """Estimate monthly cloud costs across providers"""
         powered_on = df[df['Powerstate'] == 'poweredOn']
-        
-        if powered_on.empty:
-            return {}
-            
+        if powered_on.empty: return {}
+
         cost_estimates = {}
-        
-        for provider in ['aws', 'azure', 'gcp']:
+        for provider, data in self.pricing_data.items():
             total_cost = 0
-            
+            instance_mapping = []
             for _, vm in powered_on.iterrows():
-                cpu = vm.get('CPUs', 2)
-                memory_gb = vm.get('Memory', 4096) / 1024 if vm.get('Memory') else 4
+                cpu, mem = vm.get('CPUs', 2), vm.get('Memory', 4096) / 1024
                 
-                # Match to appropriate SKU
-                if cpu <= 2 and memory_gb <= 4:
-                    sku = 'small'
-                elif cpu <= 4 and memory_gb <= 8:
-                    sku = 'medium'
-                elif cpu <= 8 and memory_gb <= 16:
-                    sku = 'large'
-                else:
-                    sku = 'xlarge'
-                    
-                total_cost += self.cloud_skus[provider][sku]['cost_monthly']
-                
+                best_fit = min(
+                    (inst for inst in data['instances'] if inst['cpu'] >= cpu and inst['memory'] >= mem),
+                    key=lambda x: x['cost_hourly'],
+                    default=max(data['instances'], key=lambda x: x['cost_hourly']) # Default to largest if no fit
+                )
+                total_cost += best_fit['cost_hourly'] * 730 # 730 hours in a month
+                instance_mapping.append({'vm_name': vm.get('VM', 'N/A'), 'mapped_instance': best_fit['type']})
+
             cost_estimates[provider] = {
-                'monthly_cost': total_cost,
-                'annual_cost': total_cost * 12
+                'monthly_cost': round(total_cost, 2),
+                'annual_cost': round(total_cost * 12, 2),
+                'instance_mapping': instance_mapping[:5] # Show a sample of mappings
             }
-            
         return cost_estimates
 
     def _assess_migration_complexity(self, df: pd.DataFrame) -> Dict[str, Any]:
-        """Assess migration complexity factors"""
-        powered_on = df[df['Powerstate'] == 'poweredOn']
-        
-        complexity_factors = {
-            'high_resource_vms': 0,
-            'legacy_os': 0,
-            'complex_networking': 0,
-            'total_complexity_score': 0
+        legacy_os_list = ['windows server 2008', 'windows server 2003', 'rhel 5']
+        legacy_os_vms = df[df['OS'].str.lower().str.contains('|'.join(legacy_os_list), na=False)]
+        return {
+            'high_resource_vms': len(df[(df['CPUs'] > 16) | (df['Memory'] > 131072)]),
+            'legacy_os_vms': len(legacy_os_vms),
+            'legacy_os_examples': legacy_os_vms[['VM', 'OS']].head(5).to_dict('records')
         }
-        
-        for _, vm in powered_on.iterrows():
-            score = 0
-            
-            # High resource VMs are more complex
-            if vm.get('CPUs', 0) > 8 or (vm.get('Memory', 0) / 1024) > 16:
-                complexity_factors['high_resource_vms'] += 1
-                score += 3
-                
-            # Legacy OS detection
-            os = str(vm.get('OS', '')).lower()
-            if 'windows server 2008' in os or 'windows server 2003' in os:
-                complexity_factors['legacy_os'] += 1
-                score += 5
-                
-            complexity_factors['total_complexity_score'] += score
-            
-        return complexity_factors
 
     def _generate_recommendations(self, analysis: Dict[str, Any]) -> List[Dict[str, str]]:
-        """Generate actionable migration recommendations"""
-        recommendations = []
+        recs = []
+        if analysis['compute_analysis'].get('right_sizing_candidates_cpu', 0) > 0:
+            count = analysis['compute_analysis']['right_sizing_candidates_cpu']
+            recs.append({
+                'type': 'success', 'title': f'Right-Size {count} High-CPU VMs',
+                'description': f'We identified {count} VMs with more than 8 vCPUs. Analyze their utilization to consider right-sizing them and reduce costs.'
+})
         
-        # Right-sizing recommendations
-        if analysis['compute_analysis'].get('right_sizing_candidates', 0) > 0:
-            recommendations.append({
-                'type': 'success',
-                'category': 'Cost Optimization',
-                'title': 'Right-sizing Opportunity',
-                'description': f"{analysis['compute_analysis']['right_sizing_candidates']} VMs can be right-sized to smaller instances, saving 30-50% on compute costs."
-            })
-            
-        # Licensing recommendations
+        if analysis['migration_complexity'].get('legacy_os_vms', 0) > 0:
+            count = analysis['migration_complexity']['legacy_os_vms']
+            recs.append({
+                'type': 'warning', 'title': f'Address {count} Legacy OS Instances',
+                'description': f'We found {count} VMs running unsupported or legacy operating systems (e.g., Windows Server 2008). These require special handling or modernization before migration.'
+})
+
         if analysis['licensing_analysis'].get('windows_vms', 0) > 0:
-            recommendations.append({
-                'type': 'info',
-                'category': 'Licensing',
-                'title': 'Azure Hybrid Benefit',
-                'description': f"Apply Azure Hybrid Benefit to {analysis['licensing_analysis']['windows_vms']} Windows VMs for up to 40% cost savings."
+            count = analysis['licensing_analysis']['windows_vms']
+            recs.append({
+                'type': 'info', 'title': 'Leverage Azure Hybrid Benefit',
+                'description': f'You have {count} Windows Server VMs. You could save up to 40% on Azure compute costs by leveraging your existing licenses with Azure Hybrid Benefit.'
             })
-            
-        # Migration complexity warnings
-        if analysis['cloud_readiness'].get('complex', 0) > analysis['summary'].get('total_vms', 1) * 0.2:
-            recommendations.append({
-                'type': 'warning',
-                'category': 'Migration Planning',
-                'title': 'Complex Migration Detected',
-                'description': f"{analysis['cloud_readiness']['complex']} VMs require detailed migration planning due to high resource requirements."
-            })
-            
-        return recommendations
+        return recs

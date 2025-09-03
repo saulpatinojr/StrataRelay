@@ -1,160 +1,86 @@
-import React, { useState } from 'react';
-import { Container, Grid, Box, Fade, AppBar, Toolbar, Typography, Button } from '@mui/material';
-import { ArrowBack, Refresh } from '@mui/icons-material';
-import EnhancedAssessmentDashboard from './EnhancedAssessmentDashboard';
-import DataSummary from './DataSummary';
-import DetailedDataView from './DetailedDataView';
+import React from 'react';
+import { Container, Grid, Box, Fade, AppBar, Toolbar, Typography, Button, CircularProgress, Alert } from '@mui/material';
+import { ArrowBack } from '@mui/icons-material';
+import useAssessmentStore from '../store/assessmentStore';
 import DataSheetManager from './DataSheetManager';
-import ExecutiveDashboard from './ExecutiveDashboard';
-import AIInsightsPanel from './AIInsightsPanel';
-import AdvancedCharts from './AdvancedCharts';
-import { calculateAdvancedMetrics } from '../services/enterpriseMetrics';
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  ArcElement,
-  Title,
-  Tooltip,
-  Legend,
-} from 'chart.js';
+import ExecutiveSummary from './ExecutiveSummary';
+import CostAnalysis from './CostAnalysis';
+import RecommendationsPanel from './RecommendationsPanel';
 
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  ArcElement,
-  Title,
-  Tooltip,
-  Legend
-);
+// --- Guru Grade Component ---
+// A clean, high-level page that orchestrates the new, focused components.
+const AssessmentPage = () => {
+  // Get all state and actions from the central store
+  const {
+    assessmentData,
+    dataSources,
+    activeSheets,
+    backToLanding,
+    restart,
+    fetchAssessment,
+    toggleSheet,
+    isLoading,
+    error
+  } = useAssessmentStore(state => state);
 
-const AssessmentPage = ({ 
-  assessmentData, 
-  parsedData, 
-  aiInsights,
-  dataSources,
-  activeSheets,
-  onBack, 
-  onRestart,
-  onUpload,
-  onDataParsed,
-  onToggleSheet
-}) => {
-  const [openDialog, setOpenDialog] = useState(false);
-  const [selectedMetric, setSelectedMetric] = useState(null);
-  const [enterpriseMetrics, setEnterpriseMetrics] = useState(null);
-
-  // Calculate enterprise metrics when data changes
-  React.useEffect(() => {
-    if (dataSources && activeSheets) {
-      const metrics = calculateAdvancedMetrics(dataSources, activeSheets);
-      setEnterpriseMetrics(metrics);
+  const renderContent = () => {
+    if (isLoading) {
+      return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}><CircularProgress /></Box>;
     }
-  }, [dataSources, activeSheets]);
+
+    if (error) {
+      return <Alert severity="error">{error}</Alert>;
+    }
+
+    if (!assessmentData) {
+      return <Typography sx={{ textAlign: 'center', mt: 10 }}>No assessment data available. Please start a new assessment.</Typography>;
+    }
+
+    return (
+      <Fade in timeout={600}>
+        <Grid container spacing={4}>
+          <Grid item xs={12}>
+            <ExecutiveSummary analysis={assessmentData} />
+          </Grid>
+          <Grid item xs={12}>
+            <CostAnalysis analysis={assessmentData} />
+          </Grid>
+          <Grid item xs={12}>
+            <RecommendationsPanel analysis={assessmentData} />
+          </Grid>
+        </Grid>
+      </Fade>
+    );
+  };
 
   return (
     <Box sx={{ minHeight: '100vh' }}>
-      <AppBar position="static" elevation={0}>
+      <AppBar position="sticky" elevation={1} sx={{ backgroundColor: 'rgba(18, 18, 18, 0.8)', backdropFilter: 'blur(10px)' }}>
         <Toolbar sx={{ minHeight: '80px' }}>
           <Button
             startIcon={<ArrowBack />}
-            onClick={onBack}
+            onClick={backToLanding}
             sx={{ mr: 2, color: 'white' }}
           >
-            Back to Upload
+            Back
           </Button>
           
-          <Typography variant="h4" component="div" sx={{ 
-            flexGrow: 1,
-            fontFamily: '"Orbitron", sans-serif',
-            fontWeight: 700,
-            background: 'linear-gradient(45deg, #667eea 30%, #764ba2 90%)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent'
-          }}>
-            StrataRelay Analytics
+          <Typography variant="h5" component="div" sx={{ flexGrow: 1, fontWeight: 600 }}>
+            Cloud Assessment Results
           </Typography>
           
           <DataSheetManager 
             dataSources={dataSources}
             activeSheets={activeSheets}
-            onToggleSheet={onToggleSheet}
-            onAddData={onUpload}
-            onDataParsed={onDataParsed}
-            onRestart={onRestart}
+            onToggleSheet={toggleSheet}
+            onDataParsed={fetchAssessment}
+            onRestart={restart}
           />
         </Toolbar>
       </AppBar>
       
-      <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
-        <Grid container spacing={3}>
-          {/* Executive Dashboard */}
-          <Grid item xs={12}>
-            <Fade in timeout={600}>
-              <Box>
-                <ExecutiveDashboard metrics={enterpriseMetrics} />
-              </Box>
-            </Fade>
-          </Grid>
-          
-          {/* AI Insights */}
-          <Grid item xs={12}>
-            <Fade in timeout={700}>
-              <Box>
-                <AIInsightsPanel metrics={enterpriseMetrics} dataSources={dataSources} />
-              </Box>
-            </Fade>
-          </Grid>
-          
-          {/* Advanced Charts */}
-          <Grid item xs={12}>
-            <Fade in timeout={750}>
-              <Box>
-                <AdvancedCharts metrics={enterpriseMetrics} />
-              </Box>
-            </Fade>
-          </Grid>
-          
-          <Grid item xs={12}>
-            <Fade in timeout={800}>
-              <Box>
-                <DataSummary 
-                  parsedData={parsedData} 
-                  onDrillDown={(sheetName, sheetData) => {
-                    setSelectedMetric({ type: sheetName, data: sheetData });
-                    setOpenDialog(true);
-                  }}
-                />
-              </Box>
-            </Fade>
-          </Grid>
-          
-          <Grid item xs={12}>
-            <Fade in timeout={1000}>
-              <Box>
-                <EnhancedAssessmentDashboard 
-                  assessmentData={assessmentData} 
-                  aiInsights={aiInsights}
-                  parsedData={parsedData}
-                  openDialog={openDialog}
-                  setOpenDialog={setOpenDialog}
-                  selectedMetric={selectedMetric}
-                  setSelectedMetric={setSelectedMetric}
-                />
-              </Box>
-            </Fade>
-          </Grid>
-          
-          <Grid item xs={12}>
-            <Fade in timeout={1200}>
-              <Box>
-                <DetailedDataView parsedData={parsedData} assessmentData={assessmentData} />
-              </Box>
-            </Fade>
-          </Grid>
-        </Grid>
+      <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+        {renderContent()}
       </Container>
     </Box>
   );
