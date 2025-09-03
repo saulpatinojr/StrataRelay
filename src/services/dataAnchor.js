@@ -4,47 +4,23 @@ export const createDataAnchors = (dataSources) => {
   dataSources.forEach(source => {
     const { code, data } = source;
     
-    // Process VM data
-    if (data.vInfo) {
-      data.vInfo.forEach(vm => {
-        const vmName = vm.VM || vm['VM Name'] || vm.Name;
-        const hostName = vm.Host || vm['Host Name'];
-        const datacenter = vm.Datacenter || vm['Datacenter Name'];
-        
-        if (vmName) {
-          const key = vmName.toLowerCase();
+    // Use universal VM data structure
+    if (data.vms && Array.isArray(data.vms)) {
+      data.vms.forEach(vm => {
+        if (vm.name) {
+          const key = vm.name.toLowerCase();
           if (!anchors.has(key)) {
             anchors.set(key, {
-              vmName,
-              hostName,
-              datacenter,
+              vmName: vm.name,
+              hostName: vm.host,
+              datacenter: vm.datacenter,
               sources: {}
             });
           }
-          anchors.get(key).sources[code] = { ...vm, sourceType: 'rvtools' };
+          anchors.get(key).sources[code] = vm;
         }
       });
     }
-    
-    // Process Azure Migrate data
-    Object.keys(data).forEach(sheetName => {
-      if (sheetName.toLowerCase().includes('server') || 
-          sheetName.toLowerCase().includes('machine')) {
-        data[sheetName].forEach(server => {
-          const vmName = server['Server name'] || server['Machine name'] || server.Name;
-          if (vmName) {
-            const key = vmName.toLowerCase();
-            if (!anchors.has(key)) {
-              anchors.set(key, {
-                vmName,
-                sources: {}
-              });
-            }
-            anchors.get(key).sources[code] = { ...server, sourceType: 'azmigrate' };
-          }
-        });
-      }
-    });
   });
   
   return anchors;

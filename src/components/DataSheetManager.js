@@ -30,13 +30,13 @@ const DataSheetManager = ({
     }
   };
 
-  const handleUpload = (jobId) => {
+  const handleUpload = (jobId, _, fileName) => {
     if (!newSheetCode || error) return;
-    onAddData(jobId, newSheetCode);
+    onAddData(jobId, newSheetCode, fileName);
   };
 
-  const handleDataParsed = (assessment, rawData) => {
-    onDataParsed(assessment, rawData, newSheetCode);
+  const handleDataParsed = (assessment, rawData, _, fileName) => {
+    onDataParsed(assessment, rawData, newSheetCode, fileName);
     setNewSheetCode('');
     setUploadOpen(false);
   };

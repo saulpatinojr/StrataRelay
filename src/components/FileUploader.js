@@ -3,8 +3,10 @@ import { useDropzone } from 'react-dropzone';
 import { Box, Typography, Paper, Alert, CircularProgress } from '@mui/material';
 import { CloudUpload } from '@mui/icons-material';
 // Firebase imports removed for local processing
-import { parseRVToolsData, parseAzMigrateData, analyzeCloudReadiness, parseExcelFile } from '../services/dataParser';
+import { parseExcelFile, analyzeCloudReadiness } from '../services/dataParser';
+import { detectFileType, createUniversalDataStructure } from '../services/universalParser';
 import { validateFileName } from '../utils/fileValidator';
+import * as XLSX from 'xlsx';
 
 const FileUploader = ({ onUpload, onDataParsed }) => {
   const [fileError, setFileError] = useState(null);
@@ -25,25 +27,27 @@ const FileUploader = ({ onUpload, onDataParsed }) => {
     setProcessing(true);
 
     try {
-      // Parse Excel file locally first
+      // Parse Excel file with universal parser
       const arrayBuffer = await file.arrayBuffer();
       const workbook = await parseExcelFile(arrayBuffer);
       
-      let parsedData;
-      if (validation.type === 'rvtools') {
-        parsedData = parseRVToolsData(workbook);
-      } else if (validation.type === 'azmigrate') {
-        parsedData = parseAzMigrateData(workbook);
-      }
+      // Detect file type and create universal structure
+      const fileType = detectFileType(workbook);
+      const universalData = createUniversalDataStructure(workbook, fileType, file.name);
       
-      const assessment = analyzeCloudReadiness(parsedData);
+      // Create assessment from universal data
+      const assessment = {
+        totalVMs: universalData.vmCount,
+        fileType: universalData.fileType,
+        fileName: universalData.fileName
+      };
       
       // Skip Firebase upload for now - process locally
       const jobId = `local_${Date.now()}`;
       
-      onUpload(jobId);
+      onUpload(jobId, null, file.name);
       if (onDataParsed) {
-        onDataParsed(assessment, parsedData);
+        onDataParsed(assessment, universalData, null, file.name);
       }
     } catch (error) {
       console.error('Upload failed:', error);

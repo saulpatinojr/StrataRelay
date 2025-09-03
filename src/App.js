@@ -19,30 +19,43 @@ function App() {
   const [dataSources, setDataSources] = useState([]);
   const [activeSheets, setActiveSheets] = useState([]);
 
-  const handleUpload = (jobId, sheetCode = '01') => {
+  const handleUpload = (jobId, sheetCode = '01', fileName = '') => {
     setCurrentJobId(jobId);
   };
 
-  const handleDataParsed = async (assessment, rawData, sheetCode = '01') => {
+  const handleDataParsed = async (assessment, universalData, sheetCode = '01', fileName = '') => {
+    // Use VM count from universal data structure
+    const vmCount = universalData.vmCount || 0;
+    
     // Add to data sources
+    const displayName = fileName ? fileName.replace(/\.[^/.]+$/, '') : `Data Sheet ${sheetCode}`;
     const newSource = {
       code: sheetCode,
-      name: `Data Sheet ${sheetCode}`,
-      data: rawData,
-      vmCount: rawData.vInfo ? rawData.vInfo.length : 0
+      name: displayName,
+      data: universalData,
+      vmCount: vmCount
     };
     
     const updatedSources = [...dataSources, newSource];
     setDataSources(updatedSources);
     setActiveSheets([...activeSheets, sheetCode]);
     
-    setAssessmentData(assessment);
-    setParsedData(rawData);
+    // Create combined assessment from all sources
+    const anchors = createDataAnchors(updatedSources);
+    const combinedAssessment = {
+      ...assessment,
+      totalVMs: anchors.size, // Total unique VMs across all sources
+      dataSources: updatedSources.length,
+      activeSheets: [...activeSheets, sheetCode]
+    };
+    
+    setAssessmentData(combinedAssessment);
+    setParsedData(universalData);
     setCurrentPage('assessment');
     
     // Get AI insights
     try {
-      const insights = await analyzeCloudReadiness(rawData.vInfo || [], null);
+      const insights = await analyzeCloudReadiness(universalData.vms || [], null);
       setAiInsights(insights);
     } catch (error) {
       console.error('Failed to get AI insights:', error);
@@ -50,11 +63,23 @@ function App() {
   };
 
   const handleToggleSheet = (sheetCode) => {
-    setActiveSheets(prev => 
-      prev.includes(sheetCode) 
-        ? prev.filter(code => code !== sheetCode)
-        : [...prev, sheetCode]
-    );
+    const newActiveSheets = activeSheets.includes(sheetCode) 
+      ? activeSheets.filter(code => code !== sheetCode)
+      : [...activeSheets, sheetCode];
+    
+    setActiveSheets(newActiveSheets);
+    
+    // Recalculate assessment with active sheets only
+    const activeDataSources = dataSources.filter(ds => newActiveSheets.includes(ds.code));
+    if (activeDataSources.length > 0) {
+      const anchors = createDataAnchors(activeDataSources);
+      const updatedAssessment = {
+        ...assessmentData,
+        totalVMs: anchors.size,
+        activeSheets: newActiveSheets
+      };
+      setAssessmentData(updatedAssessment);
+    }
   };
 
   const handleRestart = () => {
