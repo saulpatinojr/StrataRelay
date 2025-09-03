@@ -27,3 +27,15 @@ yarn-error.log*
 
 # OS
 Thumbs.db
+
+# Test Data (never commit)
+test_data/
+*.xlsx
+*.xls
+*.pptx
+*.docx
+*.png
+*.jpg
+*.jpeg
+*.gif
+public/images/

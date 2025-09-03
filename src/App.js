@@ -4,6 +4,7 @@ import { CssBaseline, AppBar, Toolbar, Typography, Container, Grid, Box } from '
 import FileUploader from './components/FileUploader';
 import JobTimeline from './components/JobTimeline';
 import AnalyticsChart from './components/AnalyticsChart';
+import TestDataInfo from './components/TestDataInfo';
 
 const darkTheme = createTheme({
   palette: {
@@ -41,6 +42,7 @@ function App() {
           <Grid item xs={12} md={6}>
             <Box mb={3}>
               <Typography variant="h5" gutterBottom>Upload Excel File</Typography>
+              <TestDataInfo />
               <FileUploader onUpload={handleUpload} />
             </Box>
           </Grid>
